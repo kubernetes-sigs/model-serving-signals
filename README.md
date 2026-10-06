@@ -8,7 +8,7 @@ Learn how to engage with the Kubernetes community on the [community page](http:/
 
 You can reach the maintainers of this project at:
 
-- [Slack channel](https://kubernetes.slack.com/messages/sig-autoscaling)
+- [Slack channel](https://kubernetes.slack.com/messages/model-serving-signals)
 - [Mailing List](https://groups.google.com/a/kubernetes.io/g/sig-autoscaling)
 
 ### Code of conduct
