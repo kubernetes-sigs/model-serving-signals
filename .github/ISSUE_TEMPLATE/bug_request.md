@@ -22,7 +22,7 @@ If the matter is security related, please disclose it privately via https://kube
 
 **Environment**:
 - Kubernetes version (use `kubectl version`):
-- Inference extension version (use `git describe --tags --dirty --always`):
+- Model-serving-signals version (use `git describe --tags --dirty --always`):
 - Cloud provider or hardware configuration:
 - Install tools:
 - Others:
