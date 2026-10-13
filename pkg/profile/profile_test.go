@@ -14,19 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package utils_test
+// Package profile defines engine profiles: declarative mappings from an engine's native metrics onto the contract.
+package profile
 
 import (
 	"strings"
 	"testing"
-
-	"sigs.k8s.io/model-serving-signals/pkg/utils"
 )
 
 func TestGetProfileFromInferenceEngine(t *testing.T) {
-	origDir := utils.ProfilesDir
-	utils.ProfilesDir = "../../catalog/profiles"
-	t.Cleanup(func() { utils.ProfilesDir = origDir })
+	origDir := ProfilesDir
+	ProfilesDir = "../../catalog/profiles"
+	t.Cleanup(func() { ProfilesDir = origDir })
 
 	testCases := []struct {
 		name            string
@@ -52,7 +51,7 @@ func TestGetProfileFromInferenceEngine(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			profile, err := utils.GetProfileFromInferenceEngine(tc.inferenceEngine)
+			profile, err := GetProfileFromInferenceEngine(tc.inferenceEngine)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected an error, got profile %+v", profile)

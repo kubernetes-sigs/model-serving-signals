@@ -27,7 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"sigs.k8s.io/model-serving-signals/pkg/utils"
+	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
 
 const (
@@ -47,7 +47,7 @@ func (s *Server) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
 	// var engineProfile *profile.Profile
-	engineProfile, err := utils.GetProfileFromInferenceEngine(s.InferenceEngine)
+	engineProfile, err := profile.GetProfileFromInferenceEngine(s.InferenceEngine)
 	if err != nil {
 		return fmt.Errorf("failed to get profile for inference engine '%s': %w", s.InferenceEngine, err)
 	}

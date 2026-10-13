@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	DefaultMetricsPort     = 8000 // vllm default port
+	DefaultMetricsPort     = 9464 // arbitrary port
 	DefaultInferenceEngine = "vllm"
 )
 

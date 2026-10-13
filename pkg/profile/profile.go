@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,11 +22,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
 )
+
+// ProfilesDir is where the engine profile catalog is installed in the exporter image.
+// It is a variable so tests can point it at the catalog in the repo.
+var ProfilesDir = "/catalog/profiles"
 
 // Profile maps an engine's native metrics onto contract signals.
 // A contract signal that is absent from Signals is one the engine does not provide.
@@ -54,7 +59,7 @@ func Load(path string) (*Profile, error) {
 }
 
 // LoadDir reads and parses every *.yaml profile in dir.
-func LoadDir(dir string) ([]*Profile, error) {
+func loadDir(dir string) ([]*Profile, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list profiles in '%s': %w", dir, err)
@@ -96,4 +101,19 @@ func validate(profile *Profile) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// GetProfileFromInferenceEngine returns the catalog profile whose name matches inferenceEngine
+// (case-insensitive, e.g. "vllm" or "SGLang"), or an error if the catalog has no such profile.
+func GetProfileFromInferenceEngine(inferenceEngine string) (*Profile, error) {
+	profiles, err := loadDir(ProfilesDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range profiles {
+		if strings.EqualFold(p.Name, inferenceEngine) {
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("no profile found for inference engine '%s' in '%s'", inferenceEngine, ProfilesDir)
 }
