@@ -57,8 +57,9 @@ func main() {
 	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
 
 	metricsExporter := &exporter.Server{
-		MetricsPort: opts.MetricsPort,
-		Gatherer:    prometheus.NewRegistry(),
+		MetricsPort:     opts.MetricsPort,
+		Gatherer:        prometheus.NewRegistry(),
+		InferenceEngine: opts.InferenceEngine,
 	}
 
 	setupLog.Info("Starting metrics exporter")

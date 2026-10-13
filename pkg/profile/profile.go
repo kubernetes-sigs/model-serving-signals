@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"sigs.k8s.io/yaml"
 
@@ -50,6 +51,31 @@ func Load(path string) (*Profile, error) {
 		return nil, fmt.Errorf("invalid profile - '%s': %w", path, err)
 	}
 	return profile, nil
+}
+
+// LoadDir reads and parses every *.yaml profile in dir.
+func LoadDir(dir string) ([]*Profile, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list profiles in '%s': %w", dir, err)
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no profiles found in '%s'", dir)
+	}
+	profiles := make([]*Profile, 0, len(paths))
+	seen := make(map[string]string, len(paths))
+	for _, path := range paths {
+		profile, err := Load(path)
+		if err != nil {
+			return nil, err
+		}
+		if other, ok := seen[profile.Name]; ok {
+			return nil, fmt.Errorf("profile name '%s' is defined in both '%s' and '%s'", profile.Name, other, path)
+		}
+		seen[profile.Name] = path
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
 }
 
 // validate checks that the profile is well formed and maps only contract signals.

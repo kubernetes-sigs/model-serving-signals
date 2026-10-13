@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,19 +23,22 @@ import (
 )
 
 const (
-	DefaultMetricsPort = 9464 // arbitrary port
+	DefaultMetricsPort     = 8000 // vllm default port
+	DefaultInferenceEngine = "vllm"
 )
 
 // NewOptions returns a new Options struct initialized with the default values.
 func NewOptions() *Options {
 	return &Options{
-		MetricsPort: DefaultMetricsPort,
+		MetricsPort:     DefaultMetricsPort,
+		InferenceEngine: DefaultInferenceEngine,
 	}
 }
 
 // Options contains configuration values necessary to create and run the metrics exporter.
 type Options struct {
-	MetricsPort int // Port on which the exporter serves the contract metrics endpoint.
+	MetricsPort     int    // Port on which the exporter serves the contract metrics endpoint.
+	InferenceEngine string // inference engine of the exported next to the inference engine.
 }
 
 func (opts *Options) AddFlags(fs *pflag.FlagSet) {
@@ -44,6 +47,7 @@ func (opts *Options) AddFlags(fs *pflag.FlagSet) {
 	}
 
 	fs.IntVar(&opts.MetricsPort, "metrics-port", opts.MetricsPort, "Port on which the exporter serves the contract metrics endpoint.")
+	fs.StringVar(&opts.InferenceEngine, "inference-engine", opts.InferenceEngine, "Inference engine running next to the exporter, whose profile is used to export the contract metrics.")
 }
 
 func (opts *Options) Complete() error {
