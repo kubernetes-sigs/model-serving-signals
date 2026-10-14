@@ -38,7 +38,7 @@ func NewOptions() *Options {
 // Options contains configuration values necessary to create and run the metrics exporter.
 type Options struct {
 	MetricsPort     int    // Port on which the exporter serves the contract metrics endpoint.
-	InferenceEngine string // inference engine of the exported next to the inference engine.
+	InferenceEngine string // inference engine of the exporter next to the inference engine.
 }
 
 func (opts *Options) AddFlags(fs *pflag.FlagSet) {
