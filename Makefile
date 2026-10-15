@@ -15,6 +15,10 @@
 IMAGE ?= model-serving-signals/exporter:dev
 KIND_CLUSTER_NAME ?= kind
 
+LOCALBIN ?= $(shell pwd)/bin
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.15.0
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -42,8 +46,24 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+.PHONY: golangci-lint
+golangci-lint: $(LOCALBIN) ## Install golangci-lint locally if necessary.
+	@test -x $(GOLANGCI_LINT) && $(GOLANGCI_LINT) version | grep -q $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) || \
+		GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+.PHONY: lint
+lint: golangci-lint ## Run golangci-lint against code.
+	$(GOLANGCI_LINT) run
+
+.PHONY: verify-boilerplate
+verify-boilerplate: ## Verify license boilerplate headers on source files.
+	./hack/verify-boilerplate.sh
+
 .PHONY: test
-test: fmt vet ## Run tests.
+test: fmt vet lint verify-boilerplate ## Run tests.
 	go test ./...
 
 .PHONY: image-build
