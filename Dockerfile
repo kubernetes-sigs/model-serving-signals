@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.27.2 AS builder
+ARG BUILDER_IMAGE=golang:1.27.2
+ARG BASE_IMAGE=gcr.io/distroless/static:nonroot
+
+FROM ${BUILDER_IMAGE} AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
@@ -22,9 +28,10 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 
-RUN CGO_ENABLED=0 go build -o /out/exporter ./cmd/exporter
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -o /out/exporter ./cmd/exporter
 
-FROM gcr.io/distroless/static:nonroot
+FROM ${BASE_IMAGE}
 COPY --from=builder /out/exporter /exporter
 COPY catalog/ /catalog/
 USER 65532:65532
