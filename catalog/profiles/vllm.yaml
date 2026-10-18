@@ -1,13 +1,12 @@
 # Engine profile for vLLM
-
-# Maps vLLM's native metrics onto the model-serving signal contract
+#
+# Maps vLLM's native metrics onto the model-serving signal contract.
+# See docs/adding-an-engine.md for the format.
+#
+# Each entry names the native metric that is re-emitted under the contract signal's name.
+# The native instrument type must match the contract signal's.
+#
+# Native names verified against https://docs.vllm.ai/en/latest/usage/metrics/
 name: vllm
 signals:
-  ## placeholder. if name changes later we would need to adapt
-  gen_ai.server.request.queued: vllm:num_requests_waiting 
-  gen_ai.server.request.running: vllm:num_requests_running
-  
-  ## already standardized names from OTel GenAI effort
-  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds
-  gen_ai.server.time_to_first_token: vllm:time_to_first_token_seconds
-  gen_ai.server.time_per_output_token: vllm:request_time_per_output_token_seconds
+  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram

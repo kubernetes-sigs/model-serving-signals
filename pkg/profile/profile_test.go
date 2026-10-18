@@ -14,61 +14,60 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package profile defines engine profiles: declarative mappings from an engine's native metrics onto the contract.
 package profile
 
 import (
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/model-serving-signals/pkg/contract"
 )
 
-func TestGetProfileFromInferenceEngine(t *testing.T) {
-	origDir := ProfilesDir
-	ProfilesDir = "../../catalog/profiles"
-	t.Cleanup(func() { ProfilesDir = origDir })
-
-	testCases := []struct {
-		name            string
-		inferenceEngine string
-		expectErr       bool
+func TestParse(t *testing.T) {
+	// Every valid case maps request.duration to vllm:e2e_request_latency_seconds.
+	tests := map[string]struct {
+		yaml    string
+		wantErr string
 	}{
-		{
-			name:            "find vllm",
-			inferenceEngine: "vllm",
-			expectErr:       false,
+		"valid": {
+			yaml: "name: vllm\nsignals:\n  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds\n",
 		},
-		{
-			name:            "engine name is case-insensitive",
-			inferenceEngine: "VLLM",
-			expectErr:       false,
+		"missing name": {
+			yaml:    "signals:\n  gen_ai.server.request.duration: x\n",
+			wantErr: "name is required",
 		},
-		{
-			name:            "not find random inference engine",
-			inferenceEngine: "some-random-not-existing",
-			expectErr:       true,
+		"no signals": {
+			yaml:    "name: vllm\n",
+			wantErr: "at least one signal",
+		},
+		"unknown signal": {
+			yaml:    "name: vllm\nsignals:\n  foo.bar: x\n",
+			wantErr: "not a contract signal",
+		},
+		"empty selector": {
+			yaml:    "name: vllm\nsignals:\n  gen_ai.server.request.duration: \"\"\n",
+			wantErr: "is empty",
+		},
+		"unknown field": {
+			yaml:    "name: vllm\nextra: 1\nsignals:\n  gen_ai.server.request.duration: x\n",
+			wantErr: "invalid profile yaml",
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			profile, err := GetProfileFromInferenceEngine(tc.inferenceEngine)
-			if tc.expectErr {
-				if err == nil {
-					t.Fatalf("expected an error, got profile %+v", profile)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			p, err := Parse([]byte(tc.yaml))
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
 				}
-				if profile != nil {
-					t.Errorf("expected nil profile on error, got %+v", profile)
+				m, ok := p.Metric(contract.RequestDuration)
+				if !ok || m != "vllm:e2e_request_latency_seconds" {
+					t.Errorf("Metric(RequestDuration) = %q, %v", m, ok)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if profile == nil {
-				t.Fatal("expected a profile, got nil")
-			}
-			if !strings.EqualFold(profile.Name, tc.inferenceEngine) {
-				t.Errorf("expected profile name %q, got %q", tc.inferenceEngine, profile.Name)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want it to contain %q", err, tc.wantErr)
 			}
 		})
 	}

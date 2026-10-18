@@ -85,11 +85,16 @@ test: fmt vet lint verify-boilerplate ## Run tests.
 	go test ./...
 
 .PHONY: image-build
-image-build: ## Build the docker image.
-	docker build -t $(IMAGE) .
+image-build: ## Build the multi-arch image for PLATFORMS with buildx (add PUSH=--push to push).
+	$(IMAGE_BUILD_CMD) -t $(IMAGE) --platform=$(PLATFORMS) $(PUSH) .
+
+.PHONY: image-push
+image-push: PUSH=--push ## Build the multi-arch image and push it to IMAGE, e.g. make image-push IMAGE=user/repo:dev
+image-push: image-build
 
 .PHONY: image-load
-image-load: image-build ## Build the image and load it in the local kind cluster.
+image-load: ## Build the image for the host arch and load it in the local kind cluster.
+	$(IMAGE_BUILD_CMD) -t $(IMAGE) --platform=linux/$(shell go env GOARCH) --load .
 	kind load docker-image $(IMAGE) --name $(KIND_CLUSTER_NAME)
 
 ##@ Release

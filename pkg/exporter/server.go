@@ -26,8 +26,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
 
 const (
@@ -37,21 +35,13 @@ const (
 
 // Server serves the contract metrics endpoint.
 type Server struct {
-	MetricsPort     int
-	Gatherer        prometheus.Gatherer
-	InferenceEngine string
+	MetricsPort int
+	Gatherer    prometheus.Gatherer
 }
 
 // Start serves the metrics endpoint until ctx is cancelled, then shuts the server down gracefully.
 func (s *Server) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-
-	// var engineProfile *profile.Profile
-	engineProfile, err := profile.GetProfileFromInferenceEngine(s.InferenceEngine)
-	if err != nil {
-		return fmt.Errorf("failed to get profile for inference engine '%s': %w", s.InferenceEngine, err)
-	}
-	logger.Info("Serving metrics for inference engine", "profile", engineProfile.Name)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(s.Gatherer, promhttp.HandlerOpts{}))

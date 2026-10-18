@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"sigs.k8s.io/model-serving-signals/pkg/exporter"
+	"sigs.k8s.io/model-serving-signals/pkg/profile"
+	"sigs.k8s.io/model-serving-signals/pkg/translator"
 )
 
 var (
@@ -53,16 +55,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	engineProfile, err := profile.Load(opts.ProfilePath)
+	if err != nil {
+		setupLog.Error(err, "Failed to load engine profile")
+		os.Exit(1)
+	}
+	setupLog.Info("Loaded engine profile", "engine", engineProfile.Name, "signals", len(engineProfile.Signals))
+
 	ctx := ctrl.SetupSignalHandler()
 	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
 
-	metricsExporter := &exporter.Server{
-		MetricsPort:     opts.MetricsPort,
-		Gatherer:        prometheus.NewRegistry(),
-		InferenceEngine: opts.InferenceEngine,
+	engineScraper := translator.NewHTTPScraper(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+	collector, err := translator.New(ctx, engineScraper, engineProfile,
+		translator.WithScrapeTimeout(opts.ScrapeTimeout),
+		translator.WithLogger(ctrl.Log.WithName("translator")),
+	)
+	if err != nil {
+		setupLog.Error(err, "Failed to build contract collector")
+		os.Exit(1)
 	}
 
-	setupLog.Info("Starting metrics exporter")
+	registry := prometheus.NewRegistry()
+	if err := registry.Register(collector); err != nil {
+		setupLog.Error(err, "Failed to register contract collector")
+		os.Exit(1)
+	}
+
+	metricsExporter := &exporter.Server{
+		MetricsPort: opts.ExporterMetricsPort,
+		Gatherer:    registry,
+	}
+
+	setupLog.Info("Starting metrics exporter", "engineMetricsURL", engineScraper.URL)
 	if err := metricsExporter.Start(ctx); err != nil {
 		setupLog.Error(err, "failed running metrics exporter")
 		os.Exit(1)

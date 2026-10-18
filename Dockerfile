@@ -27,12 +27,13 @@ RUN go mod download
 
 COPY cmd/ cmd/
 COPY pkg/ pkg/
+COPY catalog/ catalog/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -o /out/exporter ./cmd/exporter
+    go build -o exporter ./cmd/exporter
 
 FROM ${BASE_IMAGE}
-COPY --from=builder /out/exporter /exporter
+COPY --from=builder /workspace/exporter /exporter
 COPY catalog/ /catalog/
 USER 65532:65532
 
