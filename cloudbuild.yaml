@@ -18,5 +18,8 @@ substitutions:
   # _PULL_BASE_REF will contain the ref that was pushed to trigger this build -
   # a branch like 'main' or 'release-0.2', or a tag like 'v0.2'.
   _PULL_BASE_REF: 'main'
+# Dedicated staging service account with push access to the
+# k8s-staging-model-serving-signals Artifact Registry repo.
+serviceAccount: projects/k8s-staging-images/serviceAccounts/model-serving-signals-sa@k8s-staging-images.iam.gserviceaccount.com
 options:
   substitution_option: ALLOW_LOOSE
