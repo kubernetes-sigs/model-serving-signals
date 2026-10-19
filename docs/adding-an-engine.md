@@ -68,8 +68,8 @@ iterating on a mapping, or for engines not yet in the catalog.
 
 - The engine exposes a signal with an instrument type the translator does not re-emit yet. See
   [Adding a new signal](adding-a-signal.md), step 3.
-- The engine's metrics endpoint is not Prometheus text format. Implement the `scraper.Scraper` interface in
-  [`pkg/scraper/`](../pkg/scraper/) and wire it in `cmd/exporter/main.go`.
+- The engine's metrics endpoint is not Prometheus text format. Implement the `translator.Scraper` interface in
+  [`pkg/translator/`](../pkg/translator/) and wire it in `cmd/exporter/main.go`.
 
 ## Checklist
 

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
@@ -40,6 +41,8 @@ func (f fakeScraper) Scrape(context.Context) (map[string]*dto.MetricFamily, erro
 	}
 	return parse(strings.NewReader(f.exposition))
 }
+
+const testScrapeTimeout = 5 * time.Second
 
 const vllmExpositionTiny = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
 # TYPE vllm:e2e_request_latency_seconds histogram
@@ -64,7 +67,7 @@ signals:
 }
 
 func TestCollectHistogram(t *testing.T) {
-	c, err := New(context.Background(), fakeScraper{exposition: vllmExpositionTiny}, vllmProfile(t))
+	c, err := New(context.Background(), fakeScraper{exposition: vllmExpositionTiny}, vllmProfile(t), testScrapeTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +85,7 @@ gen_ai_server_request_duration_seconds_count{model_name="tiny"} 3
 }
 
 func TestCollectScrapeErrorYieldsNothing(t *testing.T) {
-	c, err := New(context.Background(), fakeScraper{err: errors.New("connection refused")}, vllmProfile(t))
+	c, err := New(context.Background(), fakeScraper{err: errors.New("connection refused")}, vllmProfile(t), testScrapeTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}

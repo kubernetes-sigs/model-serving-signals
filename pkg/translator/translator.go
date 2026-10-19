@@ -35,7 +35,6 @@ import (
 	"github.com/prometheus/otlptranslator"
 
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
-	"sigs.k8s.io/model-serving-signals/pkg/exporter"
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
 
@@ -76,17 +75,14 @@ var _ prometheus.Collector = (*Collector)(nil)
 // Option configures a Collector.
 type Option func(*Collector)
 
-// WithScrapeTimeout bounds how long a single collection may wait on the engine.
-func WithScrapeTimeout(d time.Duration) Option { return func(c *Collector) { c.timeout = d } }
-
 // WithLogger sets the logger used to report collection problems.
 func WithLogger(l logr.Logger) Option { return func(c *Collector) { c.logger = l } }
 
 // New builds a Collector that resolves every contract signal through the given profile. Scrapes run
-// under ctx, bounded per collection by the scrape timeout; cancelling ctx stops them.
+// under ctx, bounded per collection by timeout; cancelling ctx stops them.
 // It fails if the profile maps a signal whose type the translator cannot emit.
-func New(ctx context.Context, s Scraper, p *profile.Profile, opts ...Option) (*Collector, error) {
-	c := &Collector{ctx: ctx, scraper: s, timeout: exporter.DefaultScrapeTimeout, logger: logr.Discard()}
+func New(ctx context.Context, s Scraper, p *profile.Profile, timeout time.Duration, opts ...Option) (*Collector, error) {
+	c := &Collector{ctx: ctx, scraper: s, timeout: timeout, logger: logr.Discard()}
 	for _, opt := range opts {
 		opt(c)
 	}

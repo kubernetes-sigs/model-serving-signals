@@ -66,8 +66,7 @@ func main() {
 	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
 
 	engineScraper := translator.NewHTTPScraper(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
-	collector, err := translator.New(ctx, engineScraper, engineProfile,
-		translator.WithScrapeTimeout(opts.ScrapeTimeout),
+	collector, err := translator.New(ctx, engineScraper, engineProfile, opts.ScrapeTimeout,
 		translator.WithLogger(ctrl.Log.WithName("translator")),
 	)
 	if err != nil {
