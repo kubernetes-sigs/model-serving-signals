@@ -4,13 +4,14 @@ A *signal* is one engine-agnostic metric in the contract, named with OpenTelemet
 (e.g. `gen_ai.server.request.duration`). The exporter re-exposes each signal in Prometheus format, with the
 OTel-to-Prometheus naming rules applied automatically (`gen_ai_server_request_duration_seconds`).
 
-Adding a signal touches, at most, three places:
+Adding a signal touches, at most, four places:
 
 | Step | Where | When |
 |------|-------|------|
 | 1. Declare the signal | `pkg/contract/signals.go` | Always |
 | 2. Map it in each engine profile | `catalog/profiles/<engine>.yaml` | Always, for every engine that provides it |
 | 3. Add a converter | `pkg/translator/translator.go` | Only if the signal uses an instrument type the translator does not re-emit yet |
+| 4. Update the contract documentation | [`model-server-contract.md`](../model-server-contract.md) | Always |
 
 ## 1. Declare the signal in the contract
 
@@ -76,10 +77,17 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 2. Add a test in `translator_test.go` following `TestCollectHistogram`:
    feed a fake exposition through `fakeScraper` and compare the output with `testutil.CollectAndCompare`.
 
+## 4. Update the contract documentation
+
+Add the signal to the table in [`model-server-contract.md`](../model-server-contract.md), including its
+standard name, instrument type, unit, and semantics. Add the corresponding native metric name for each
+engine that provides it, matching the engine profiles; use `N/A` for engines that do not provide it.
+
 ## Checklist
 
 - [ ] Signal declared in `pkg/contract/signals.go` and added to `Signals`
 - [ ] `TestPrometheusName` covers the new Prometheus name
 - [ ] Mapped in every `catalog/profiles/*.yaml` whose engine provides it
 - [ ] The translator re-emits the signal's instrument type, or a new converter was added with a test
+- [ ] Contract table in `model-server-contract.md` updated with the signal and its engine mappings
 - [ ] `go test ./...` passes
