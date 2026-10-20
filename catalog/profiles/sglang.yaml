@@ -1,0 +1,16 @@
+# Engine profile for SGLang
+#
+# Maps SGLang's native metrics onto the model-serving signal contract.
+# See docs/adding-an-engine.md for the format.
+#
+# Each entry names the native metric that is re-emitted under the contract signal's name.
+# The native instrument type must match the contract signal's.
+#
+# Native names verified against SGLang source python/sglang/srt/observability/metrics_collector.py
+name: sglang
+signals:
+  gen_ai.server.request.duration: sglang:e2e_request_latency_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: sglang:time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.time_per_output_token: sglang:request_time_per_output_token_seconds # histogram, seconds
+  gen_ai.server.request.queued: sglang:num_queue_reqs # gauge
+  gen_ai.server.request.running: sglang:num_running_reqs # gauge
