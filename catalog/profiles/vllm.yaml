@@ -9,4 +9,8 @@
 # Native names verified against https://docs.vllm.ai/en/latest/usage/metrics/
 name: vllm
 signals:
-  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram
+  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: vllm:time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.time_per_output_token: vllm:request_time_per_output_token_seconds # histogram, seconds (per-request mean TPOT, matches OTel definition)
+  gen_ai.server.request.queued: vllm:num_requests_waiting # gauge
+  gen_ai.server.request.running: vllm:num_requests_running # gauge
