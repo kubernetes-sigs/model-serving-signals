@@ -2,6 +2,14 @@
 
 Engine-agnostic signal contract for model servers on Kubernetes: common metric semantics, engine profiles (e.g., vLLM, SGLang, TensorRT-LLM), a mapping exporter, a conformance suite, and autoscaling integration.
 
+## Sponsoring SIGs
+
+This project is sponsored by:
+
+- Kubernetes [SIG Autoscaling](https://github.com/kubernetes/community/tree/master/sig-autoscaling)
+- Kubernetes [SIG Instrumentation](https://github.com/kubernetes/community/tree/master/sig-instrumentation)
+- OpenTelemetry [GenAI SIG](https://github.com/open-telemetry/community/blob/main/projects/gen-ai.md)
+
 ## Model-serving signal contract
 
 See the [model server contract](model-server-contract.md) for the complete metric table,
