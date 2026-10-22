@@ -81,7 +81,7 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 
 The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
 iterates every signal in the engine profile and asserts the exporter's value matches the engine's native
-metric. Once the signal is mapped in the vLLM profile, `make test-e2e` covers it automatically, no new test
+metric. Once the signal is mapped in the inference engine profile, `make test-e2e` covers it automatically, no new test
 code needed. Run it and confirm your signal shows up as a passing subtest.
 
 ## 5. Update the contract documentation
