@@ -59,6 +59,14 @@ Each mapped signal should appear under its contract name, e.g. `gen_ai_server_re
 the engine's labels preserved. A type mismatch between the native metric and the contract signal shows up in
 the exporter log as `Failed to convert native metric`.
 
+## 4. Add end-to-end coverage
+
+The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
+drives a simulated engine and asserts the exporter's contract metrics match the engine's native metrics for
+every signal in the profile. If a CPU simulator exists for your engine, add a manifest under
+`test/e2e/manifests/` and wire it into the harness so the new profile is exercised in CI. Run `make test-e2e`
+to confirm it passes. See the [e2e README](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/test/e2e/README.md).
+
 ## Trying a profile without rebuilding
 
 `--profile` accepts any path, so a profile outside `catalog/` works just as well. This is handy while
@@ -77,3 +85,4 @@ iterating on a mapping, or for engines not yet in the catalog.
 - [ ] Each mapped native metric has the same meaning, unit and instrument type as the contract signal
 - [ ] `go run ./cmd/exporter --profile catalog/profiles/<engine>.yaml` starts without errors
 - [ ] Verified against a real scrape of the engine
+- [ ] End-to-end coverage added and `make test-e2e` passes (when a simulator is available)

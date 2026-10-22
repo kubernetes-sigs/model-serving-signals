@@ -77,7 +77,14 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 2. Add a test in `translator_test.go` following `TestCollectHistogram`:
    feed a fake exposition through `fakeScraper` and compare the output with `testutil.CollectAndCompare`.
 
-## 4. Update the contract documentation
+## 4. Verify end-to-end
+
+The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
+iterates every signal in the engine profile and asserts the exporter's value matches the engine's native
+metric. Once the signal is mapped in the vLLM profile, `make test-e2e` covers it automatically, no new test
+code needed. Run it and confirm your signal shows up as a passing subtest.
+
+## 5. Update the contract documentation
 
 Add the signal to the table in the [Model server contract](../reference/contract.md), including its
 standard name, instrument type, unit, and semantics. Add the corresponding native metric name for each
@@ -89,5 +96,6 @@ engine that provides it, matching the engine profiles; use `N/A` for engines tha
 - [ ] `TestPrometheusName` covers the new Prometheus name
 - [ ] Mapped in every `catalog/profiles/*.yaml` whose engine provides it
 - [ ] The translator re-emits the signal's instrument type, or a new converter was added with a test
+- [ ] `make test-e2e` passes and the signal appears as a subtest
 - [ ] Contract table in the [Model server contract](../reference/contract.md) updated with the signal and its engine mappings
 - [ ] `go test ./...` passes

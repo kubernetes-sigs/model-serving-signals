@@ -81,8 +81,12 @@ verify-boilerplate: ## Verify license boilerplate headers on source files.
 	./hack/verify-boilerplate.sh
 
 .PHONY: test
-test: fmt vet lint verify-boilerplate ## Run tests.
+test: fmt vet lint verify-boilerplate ## Run unit tests.
 	go test ./...
+
+.PHONY: test-e2e
+test-e2e: ## Run vLLM simulator end-to-end test in kind.
+	./hack/test-e2e.sh
 
 .PHONY: image-build
 image-build: ## Build the multi-arch image for PLATFORMS with buildx (add PUSH=--push to push).
