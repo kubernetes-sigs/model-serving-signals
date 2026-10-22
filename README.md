@@ -1,4 +1,3 @@
-[![Go Report Card](https://goreportcard.com/badge/sigs.k8s.io/model-serving-signals)](https://goreportcard.com/report/sigs.k8s.io/model-serving-signals)
 [![Go Reference](https://pkg.go.dev/badge/sigs.k8s.io/model-serving-signals.svg)](https://pkg.go.dev/sigs.k8s.io/model-serving-signals)
 [![License](https://img.shields.io/github/license/kubernetes-sigs/model-serving-signals)](/LICENSE)
 [![Join Slack](https://img.shields.io/badge/Join_Slack-blue?logo=slack)](https://kubernetes.slack.com/archives/C0C73KQCGN5)
