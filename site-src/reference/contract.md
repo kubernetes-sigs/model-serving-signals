@@ -1,10 +1,10 @@
 # Model server contract
 
 The contract defines a common name, instrument type, unit, and meaning for each model-serving metric.
-The table below lists every signal currently defined in [`pkg/contract/signals.go`](pkg/contract/signals.go),
+The table below lists every signal currently defined in [`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go),
 with the native metric names used by the bundled engine profiles.
 
-| Contract metric | Type | Unit | Semantics | [vLLM](catalog/profiles/vllm.yaml) | [SGLang](catalog/profiles/sglang.yaml) |
+| Contract metric | Type | Unit | Semantics | [vLLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/vllm.yaml) | [SGLang](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/sglang.yaml) |
 | --- | --- | --- | --- | --- | --- |
 | `gen_ai.server.request.duration` | Histogram | `s` (seconds) | Request duration until the last byte or last output token. | `vllm:e2e_request_latency_seconds` | `sglang:e2e_request_latency_seconds` |
 | `gen_ai.server.time_to_first_token` | Histogram | `s` (seconds) | Time to generate the first token for a successful response, including queue and prefill time. | `vllm:time_to_first_token_seconds` | `sglang:time_to_first_token_seconds` |

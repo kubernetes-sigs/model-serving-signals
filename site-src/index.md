@@ -6,7 +6,7 @@ a conformance suite, and autoscaling integration.
 
 ## Model-serving signal contract
 
-See the [model server contract](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/model-server-contract.md)
+See the [model server contract](reference/contract.md)
 for the complete metric table, including standard names, types, units, semantics,
 and engine-specific metric mappings.
 

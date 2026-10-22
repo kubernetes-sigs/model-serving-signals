@@ -12,7 +12,7 @@ This project is sponsored by:
 
 ## Model-serving signal contract
 
-See the [model server contract](model-server-contract.md) for the complete metric table,
+See the [model server contract](site-src/reference/contract.md) for the complete metric table,
 including standard names, types, units, semantics, and engine-specific metric mappings.
 
 ## Design

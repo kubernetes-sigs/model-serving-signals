@@ -41,5 +41,6 @@ nav:
     - Adding an Engine: extending/adding-an-engine.md
   - Reference:
     - Signal Catalog: reference/index.md
+    - Model Server Contract: reference/contract.md
   - Contributing:
     - How to Get Involved: contributing/index.md

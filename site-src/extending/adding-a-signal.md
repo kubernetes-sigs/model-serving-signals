@@ -11,7 +11,7 @@ Adding a signal touches, at most, four places:
 | 1. Declare the signal | `pkg/contract/signals.go` | Always |
 | 2. Map it in each engine profile | `catalog/profiles/<engine>.yaml` | Always, for every engine that provides it |
 | 3. Add a converter | `pkg/translator/translator.go` | Only if the signal uses an instrument type the translator does not re-emit yet |
-| 4. Update the contract documentation | [`model-server-contract.md`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/model-server-contract.md) | Always |
+| 4. Update the contract documentation | [Model server contract](../reference/contract.md) | Always |
 
 ## 1. Declare the signal in the contract
 
@@ -79,7 +79,7 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 
 ## 4. Update the contract documentation
 
-Add the signal to the table in [`model-server-contract.md`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/model-server-contract.md), including its
+Add the signal to the table in the [Model server contract](../reference/contract.md), including its
 standard name, instrument type, unit, and semantics. Add the corresponding native metric name for each
 engine that provides it, matching the engine profiles; use `N/A` for engines that do not provide it.
 
@@ -89,5 +89,5 @@ engine that provides it, matching the engine profiles; use `N/A` for engines tha
 - [ ] `TestPrometheusName` covers the new Prometheus name
 - [ ] Mapped in every `catalog/profiles/*.yaml` whose engine provides it
 - [ ] The translator re-emits the signal's instrument type, or a new converter was added with a test
-- [ ] Contract table in `model-server-contract.md` updated with the signal and its engine mappings
+- [ ] Contract table in the [Model server contract](../reference/contract.md) updated with the signal and its engine mappings
 - [ ] `go test ./...` passes
