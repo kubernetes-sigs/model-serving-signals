@@ -26,3 +26,6 @@ go.work.sum
 
 # MacOS generated files
 **/.DS_Store
+
+# MkDocs build output
+site

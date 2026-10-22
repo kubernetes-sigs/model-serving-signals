@@ -1,0 +1,45 @@
+site_name: Model Serving Signals
+repo_url: https://github.com/kubernetes-sigs/model-serving-signals
+repo_name: kubernetes-sigs/model-serving-signals
+site_dir: site
+docs_dir: site-src
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/git-alt
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - search.highlight
+    - navigation.tabs
+    - navigation.top
+    - navigation.expand
+    - content.tabs.link
+edit_uri: edit/main/site-src/
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - meta
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+  - tables
+  - pymdownx.tabbed:
+      alternate_style: true
+nav:
+  - Overview:
+    - Introduction: index.md
+  - Extending:
+    - Adding a Signal: extending/adding-a-signal.md
+    - Adding an Engine: extending/adding-an-engine.md
+  - Reference:
+    - Signal Catalog: reference/index.md
+  - Contributing:
+    - How to Get Involved: contributing/index.md

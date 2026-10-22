@@ -11,11 +11,11 @@ Adding a signal touches, at most, four places:
 | 1. Declare the signal | `pkg/contract/signals.go` | Always |
 | 2. Map it in each engine profile | `catalog/profiles/<engine>.yaml` | Always, for every engine that provides it |
 | 3. Add a converter | `pkg/translator/translator.go` | Only if the signal uses an instrument type the translator does not re-emit yet |
-| 4. Update the contract documentation | [`model-server-contract.md`](../model-server-contract.md) | Always |
+| 4. Update the contract documentation | [`model-server-contract.md`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/model-server-contract.md) | Always |
 
 ## 1. Declare the signal in the contract
 
-Open [`pkg/contract/signals.go`](../pkg/contract/signals.go).
+Open [`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go).
 
 **If OpenTelemetry already defines the metric** (check the
 [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/)), reuse the
@@ -45,7 +45,7 @@ get `_total`), so the test documents what consumers will see.
 
 ## 2. Map the signal in the engine profiles
 
-Each engine profile in [`catalog/profiles/`](../catalog/profiles/) maps contract signal names to the engine's
+Each engine profile in [`catalog/profiles/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/) maps contract signal names to the engine's
 native metric. The native metric is re-emitted as is under the contract name, so its instrument type must match
 the signal's:
 
@@ -63,7 +63,7 @@ The exporter logs an error at scrape time when the native metric's actual type d
 ## 3. Add a converter if the signal type is new
 
 The translator re-emits histograms and gauges, chosen per signal by `converterFor` in
-[`pkg/translator/translator.go`](../pkg/translator/translator.go). If your signal uses another instrument type,
+[`pkg/translator/translator.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/translator/translator.go). If your signal uses another instrument type,
 the exporter refuses to start with `unsupported ... signal`. To support it:
 
 1. Add a case to `converterFor` returning a function with the signature
@@ -79,7 +79,7 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 
 ## 4. Update the contract documentation
 
-Add the signal to the table in [`model-server-contract.md`](../model-server-contract.md), including its
+Add the signal to the table in [`model-server-contract.md`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/model-server-contract.md), including its
 standard name, instrument type, unit, and semantics. Add the corresponding native metric name for each
 engine that provides it, matching the engine profiles; use `N/A` for engines that do not provide it.
 

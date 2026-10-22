@@ -1,0 +1,7 @@
+# netlify configuration
+[build]
+publish = "site"
+command = "make build-docs-netlify"
+# Python is installed on demand on the current Netlify build image.
+# See https://docs.netlify.com/build/configure-builds/available-software-at-build-time/
+environment = { PYTHON_VERSION = "3.12" }

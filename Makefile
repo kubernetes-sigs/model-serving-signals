@@ -118,3 +118,20 @@ staging-image-push: staging-image-build
 
 .PHONY: image-pushing-postsubmit
 image-pushing-postsubmit: staging-image-push ## Entry point invoked by cloudbuild.yaml on merge to main.
+
+##@ Documentation
+
+.PHONY: build-docs
+build-docs: ## Build the docs site into site/ using the local mkdocs image.
+	docker build --pull -t model-serving-signals/mkdocs hack/mkdocs/image
+	docker run --rm -v ${PWD}:/docs model-serving-signals/mkdocs build
+
+.PHONY: build-docs-netlify
+build-docs-netlify: ## Build the docs site on Netlify (installs deps, then builds).
+	pip install -r hack/mkdocs/image/requirements.txt
+	python -m mkdocs build --strict
+
+.PHONY: live-docs
+live-docs: ## Serve the docs locally with live reload on :3000.
+	docker build -t model-serving-signals/mkdocs hack/mkdocs/image
+	docker run --rm -it -p 3000:3000 -v ${PWD}:/docs model-serving-signals/mkdocs

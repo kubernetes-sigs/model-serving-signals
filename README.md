@@ -11,10 +11,16 @@ including standard names, types, units, semantics, and engine-specific metric ma
 
 The motivation, scope, and design of this project are described in the [model-serving-signals proposal doc](https://docs.google.com/document/d/1o2JCgOT5qBQ0x3NsAga5AAFr9BfGjMEPWmcP0NomHgE/edit).
 
+## Documentation
+
+The project website is built from [`site-src/`](site-src/) with MkDocs and
+published via Netlify. `site-src/` is the single source of truth for docs;
+build locally with `make build-docs` (or `make live-docs` to preview).
+
 ## Extending
 
-- [Adding a new signal (metric)](docs/adding-a-signal.md)
-- [Adding a new engine](docs/adding-an-engine.md)
+- [Adding a new signal (metric)](site-src/extending/adding-a-signal.md)
+- [Adding a new engine](site-src/extending/adding-an-engine.md)
 
 ## Community, discussion, contribution, and support
 

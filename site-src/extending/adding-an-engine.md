@@ -7,7 +7,7 @@ profile, and the exporter can translate that engine's metrics.
 ## 1. Find the engine's native metrics
 
 Start the engine and scrape its Prometheus endpoint (usually `/metrics`). For each contract signal in
-[`pkg/contract/signals.go`](../pkg/contract/signals.go), find the native metric with the same meaning **and
+[`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go), find the native metric with the same meaning **and
 the same instrument type**. For example, `gen_ai.server.request.duration` is a histogram of end-to-end request
 latency in seconds, so it must be mapped to a native histogram in seconds.
 
@@ -69,7 +69,7 @@ iterating on a mapping, or for engines not yet in the catalog.
 - The engine exposes a signal with an instrument type the translator does not re-emit yet. See
   [Adding a new signal](adding-a-signal.md), step 3.
 - The engine's metrics endpoint is not Prometheus text format. Implement the `translator.Scraper` interface in
-  [`pkg/translator/`](../pkg/translator/) and wire it in `cmd/exporter/main.go`.
+  [`pkg/translator/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/translator/) and wire it in `cmd/exporter/main.go`.
 
 ## Checklist
 

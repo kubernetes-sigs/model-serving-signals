@@ -1,7 +1,6 @@
 # Engine profile for SGLang
 #
 # Maps SGLang's native metrics onto the model-serving signal contract.
-# See docs/adding-an-engine.md for the format.
 #
 # Each entry names the native metric that is re-emitted under the contract signal's name.
 # The native instrument type must match the contract signal's.
