@@ -7,10 +7,11 @@ consumers see the same metric names and semantics regardless of the engine behin
 
 ## Available profiles
 
-| Engine | Profile                                        |
-|--------|------------------------------------------------|
-| vLLM   | [`profiles/vllm.yaml`](profiles/vllm.yaml)     |
-| SGLang | [`profiles/sglang.yaml`](profiles/sglang.yaml) |
+| Engine       | Profile                                          |
+|--------------|--------------------------------------------------|
+| vLLM         | [`profiles/vllm.yaml`](profiles/vllm.yaml)       |
+| SGLang       | [`profiles/sglang.yaml`](profiles/sglang.yaml)   |
+| TensorRT-LLM | [`profiles/trt-llm.yaml`](profiles/trt-llm.yaml) |
 
 ## Profile format
 
@@ -38,6 +39,9 @@ The image ships this directory at `/catalog`:
 ```sh
 --profile=/catalog/profiles/vllm.yaml
 ```
+
+`trtllm-serve` answers `/metrics` with JSON iteration stats and serves Prometheus metrics at `/prometheus/metrics`,
+so the TensorRT-LLM profile also needs `--engine-metrics-path=/prometheus/metrics`.
 
 ## Adding a profile
 
