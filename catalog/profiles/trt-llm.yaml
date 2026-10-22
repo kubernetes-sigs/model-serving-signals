@@ -1,0 +1,20 @@
+# Engine profile for TensorRT-LLM
+#
+# Maps TensorRT-LLM's native metrics onto the model-serving signal contract.
+#
+# Each entry names the native metric that is re-emitted under the contract signal's name.
+# The native instrument type must match the contract signal's.
+#
+# Native names verified against a live TensorRT-LLM worker scrape (trtllm: prefix),
+# exposed on the Dynamo worker system metrics port by `dynamo.mocker --engine-type trtllm`.
+#
+# gen_ai.server.time_per_output_token is omitted: the engine exposes
+# trtllm:inter_token_latency_seconds (per-token interval), not a per-request
+# time_per_output_token, so the signal is left unmapped rather than mapped on
+# name similarity.
+name: trt-llm
+signals:
+  gen_ai.server.request.duration: trtllm:e2e_request_latency_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: trtllm:time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.request.queued: trtllm:num_requests_waiting # gauge
+  gen_ai.server.request.running: trtllm:num_requests_running # gauge
