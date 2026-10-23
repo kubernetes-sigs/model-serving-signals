@@ -18,11 +18,14 @@ package translator
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
+	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
 
 const vllmExposition = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
@@ -92,6 +95,97 @@ func TestNewHTTPScraperURL(t *testing.T) {
 	} {
 		if got := NewHTTPScraper(tc.host, tc.port, tc.path).URL; got != tc.want {
 			t.Errorf("NewHTTPScraper(%q, %d, %q).URL = %q, want %q", tc.host, tc.port, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestScraperSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name, declared, override string
+		want                     ScraperKind
+		wantErr                  bool
+	}{
+		{"legacy profile", "", "", ScraperPrometheus, false},
+		{"explicit prometheus", string(ScraperPrometheus), string(ScraperPrometheus), ScraperPrometheus, false},
+		{"RTP auto", string(ScraperRTPWorkerStatus), "", ScraperRTPWorkerStatus, false},
+		{"RTP explicit", string(ScraperRTPWorkerStatus), string(ScraperRTPWorkerStatus), ScraperRTPWorkerStatus, false},
+		{"vllm with RTP scraper", "", string(ScraperRTPWorkerStatus), "", true},
+		{"RTP with prometheus", string(ScraperRTPWorkerStatus), string(ScraperPrometheus), "", true},
+		{"unknown profile scraper", "typo", "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ResolveScraperKind(&profile.Profile{Name: tc.name, Scraper: tc.declared}, tc.override)
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Fatalf("got %q, %v; want %q, error=%v", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestScraperFactory(t *testing.T) {
+	for _, kind := range ScraperKinds() {
+		t.Run(string(kind), func(t *testing.T) {
+			s, err := NewScraper(kind, "::1", 8000, "/worker_status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var endpoint string
+			switch concrete := s.(type) {
+			case *HTTP:
+				if kind != ScraperPrometheus {
+					t.Fatal("wrong adapter")
+				}
+				endpoint = concrete.URL
+			case *RTPWorkerStatus:
+				if kind != ScraperRTPWorkerStatus {
+					t.Fatal("wrong adapter")
+				}
+				endpoint = concrete.URL
+			default:
+				t.Fatalf("unexpected scraper %T", s)
+			}
+			if endpoint != "http://[::1]:8000/worker_status" {
+				t.Fatal(endpoint)
+			}
+		})
+	}
+	if _, err := NewScraper("unknown", "localhost", 8000, "/metrics"); err == nil {
+		t.Fatal("unknown scraper accepted")
+	}
+}
+
+// Verify the existing pull scraper understands the bridge's actual wire output.
+// This is native metric collection, not a claim of contract semantic equivalence.
+func TestRTPNativeHistogramScrape(t *testing.T) {
+	body, err := os.ReadFile("testdata/rtp_llm_histograms.prom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer srv.Close()
+	families, err := (&HTTP{URL: srv.URL + "/metrics"}).Scrape(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, count := range map[string]uint64{
+		"py_rtp_framework_rt_seconds":            6,
+		"py_rtp_response_first_token_rt_seconds": 6,
+		"py_rtp_response_iterate_rt_seconds":     72,
+	} {
+		family := families[name]
+		if family == nil || family.GetType() != dto.MetricType_HISTOGRAM || len(family.Metric) != 1 {
+			t.Fatalf("invalid family %s: %v", name, family)
+		}
+		h := family.Metric[0].GetHistogram()
+		if h.GetSampleCount() != count || h.GetSampleSum() <= 0 {
+			t.Fatalf("invalid histogram %s: %v", name, h)
+		}
+		last := h.Bucket[len(h.Bucket)-1]
+		if !math.IsInf(last.GetUpperBound(), 1) || last.GetCumulativeCount() != count {
+			t.Fatalf("invalid +Inf bucket: %v", last)
+		}
+		if labelsOf(family.Metric[0])["process_instance_id"] != "frontend-1" {
+			t.Fatal("process identity lost")
 		}
 	}
 }

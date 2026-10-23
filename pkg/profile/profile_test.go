@@ -72,3 +72,13 @@ func TestParse(t *testing.T) {
 		})
 	}
 }
+
+func TestProfileScraper(t *testing.T) {
+	p, err := Parse([]byte("name: custom\nscraper: rtp-llm-worker-status\nsignals:\n  gen_ai.server.request.running: requests\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Scraper != "rtp-llm-worker-status" {
+		t.Fatalf("scraper = %q", p.Scraper)
+	}
+}

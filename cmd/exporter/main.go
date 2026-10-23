@@ -65,7 +65,16 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
 
-	engineScraper := translator.NewHTTPScraper(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+	scraperKind, err := translator.ResolveScraperKind(engineProfile, opts.EngineScraper)
+	if err != nil {
+		setupLog.Error(err, "Invalid profile/scraper combination")
+		os.Exit(1)
+	}
+	engineScraper, err := translator.NewScraper(scraperKind, opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+	if err != nil {
+		setupLog.Error(err, "Failed to build engine scraper")
+		os.Exit(1)
+	}
 	collector, err := translator.New(ctx, engineScraper, engineProfile, opts.ScrapeTimeout,
 		translator.WithLogger(ctrl.Log.WithName("translator")),
 	)
@@ -85,7 +94,7 @@ func main() {
 		Gatherer:    registry,
 	}
 
-	setupLog.Info("Starting metrics exporter", "engineMetricsURL", engineScraper.URL)
+	setupLog.Info("Starting metrics exporter", "engineHost", opts.EngineHost, "engineMetricsPort", opts.EngineMetricsPort, "engineMetricsPath", opts.EngineMetricsPath, "scraper", scraperKind)
 	if err := metricsExporter.Start(ctx); err != nil {
 		setupLog.Error(err, "failed running metrics exporter")
 		os.Exit(1)

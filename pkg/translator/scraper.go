@@ -23,12 +23,63 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
+	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
+
+// ScraperKind identifies a supported engine metrics protocol.
+type ScraperKind string
+
+const (
+	ScraperPrometheus      ScraperKind = "prometheus"
+	ScraperRTPWorkerStatus ScraperKind = "rtp-llm-worker-status"
+)
+
+// ScraperKinds returns the supported protocols, shared by flags and validation.
+func ScraperKinds() []ScraperKind {
+	return []ScraperKind{ScraperPrometheus, ScraperRTPWorkerStatus}
+}
+
+// ValidateScraperKind rejects protocols the exporter cannot read.
+func ValidateScraperKind(kind ScraperKind) error {
+	if !slices.Contains(ScraperKinds(), kind) {
+		return fmt.Errorf("unknown scraper kind %q, want one of %v", kind, ScraperKinds())
+	}
+	return nil
+}
+
+// ResolveScraperKind selects the profile's protocol and rejects incompatible CLI overrides.
+func ResolveScraperKind(p *profile.Profile, override string) (ScraperKind, error) {
+	kind := ScraperKind(p.Scraper)
+	if kind == "" {
+		kind = ScraperPrometheus
+	}
+	if err := ValidateScraperKind(kind); err != nil {
+		return "", fmt.Errorf("profile %q: %w", p.Name, err)
+	}
+	if override != "" && ScraperKind(override) != kind {
+		return "", fmt.Errorf("profile %q requires scraper %q, incompatible --engine-scraper %q", p.Name, kind, override)
+	}
+	return kind, nil
+}
+
+// NewScraper constructs the protocol adapter for http://host:port/path.
+func NewScraper(kind ScraperKind, host string, port int, path string) (Scraper, error) {
+	httpScraper := NewHTTPScraper(host, port, path)
+	switch kind {
+	case ScraperPrometheus:
+		return httpScraper, nil
+	case ScraperRTPWorkerStatus:
+		return &RTPWorkerStatus{HTTP: *httpScraper}, nil
+	default:
+		return nil, ValidateScraperKind(kind)
+	}
+}
 
 // Scraper fetches an engine's native metrics, keyed by metric family name.
 type Scraper interface {
@@ -53,6 +104,10 @@ func NewHTTPScraper(host string, port int, path string) *HTTP {
 
 // Scrape fetches and parses the engine's metrics.
 func (h *HTTP) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error) {
+	return h.scrape(ctx, string(expfmt.NewFormat(expfmt.TypeTextPlain)), parse)
+}
+
+func (h *HTTP) scrape(ctx context.Context, accept string, decode func(io.Reader) (map[string]*dto.MetricFamily, error)) (map[string]*dto.MetricFamily, error) {
 	client := h.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -61,7 +116,7 @@ func (h *HTTP) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error)
 	if err != nil {
 		return nil, fmt.Errorf("building scrape request for %s: %w", h.URL, err)
 	}
-	req.Header.Set("Accept", string(expfmt.NewFormat(expfmt.TypeTextPlain)))
+	req.Header.Set("Accept", accept)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -75,10 +130,7 @@ func (h *HTTP) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error)
 		return nil, fmt.Errorf("scraping %s: unexpected status %s", h.URL, resp.Status)
 	}
 
-	// Parse decodes a Prometheus text exposition into metric families keyed by name.
-	// Engine metric names such as "vllm:e2e_request_latency_seconds" contain colons, which are
-	// legal under the legacy validation scheme, so UTF-8 validation is used to accept any engine's names.
-	return parse(resp.Body)
+	return decode(resp.Body)
 }
 
 // Parse decodes a Prometheus text exposition into metric families keyed by name.
