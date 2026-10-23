@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -69,6 +70,30 @@ func TestHTTPScrapeNon200(t *testing.T) {
 
 	if _, err := (&HTTP{URL: srv.URL}).Scrape(context.Background()); err == nil {
 		t.Fatal("expected an error for a non-200 response")
+	}
+}
+
+func TestHTTPScrapeParseErrorIsActionable(t *testing.T) {
+	// A Prometheus exposition where one line has an invalid metric name (a name cannot start
+	// with a digit). The parser reports "invalid metric name" (the symptom from #43), and the
+	// error must point at the offending line, not just "line N".
+	const bad = "# HELP vllm:num_requests_running running\n" +
+		"# TYPE vllm:num_requests_running gauge\n" +
+		"123bad{model_name=\"m\"} 5\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(bad))
+	}))
+	defer srv.Close()
+
+	url := srv.URL + "/metrics"
+	_, err := (&HTTP{URL: url}).Scrape(context.Background())
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	for _, want := range []string{url, "Content-Type", "invalid metric name", `line 3: "123bad{model_name=\"m\"} 5"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
 	}
 }
 
