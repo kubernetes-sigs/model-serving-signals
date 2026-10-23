@@ -17,18 +17,29 @@ limitations under the License.
 package translator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 )
+
+// maxSnippetLen caps how much of an offending line is echoed into a parse error so a
+// binary or oversized body cannot blow up the log line.
+const maxSnippetLen = 120
+
+// lineNumRe extracts the line number from the Prometheus text parser error, whose message
+// has the form "text format parsing error in line N: ...".
+var lineNumRe = regexp.MustCompile(`line (\d+)`)
 
 // Scraper fetches an engine's native metrics, keyed by metric family name.
 type Scraper interface {
@@ -75,10 +86,42 @@ func (h *HTTP) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error)
 		return nil, fmt.Errorf("scraping %s: unexpected status %s", h.URL, resp.Status)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading scrape body from %s: %w", h.URL, err)
+	}
+
 	// Parse decodes a Prometheus text exposition into metric families keyed by name.
 	// Engine metric names such as "vllm:e2e_request_latency_seconds" contain colons, which are
 	// legal under the legacy validation scheme, so UTF-8 validation is used to accept any engine's names.
-	return parse(resp.Body)
+	families, err := parse(bytes.NewReader(body))
+	if err != nil {
+		contentType := resp.Header.Get("Content-Type")
+		return nil, fmt.Errorf("%w; endpoint %s returned Content-Type %q%s", err, h.URL, contentType, offendingLine(err, body))
+	}
+	return families, nil
+}
+
+// offendingLine returns ", line N: <snippet>" naming the content the parser choked on, or "" if
+// the parser error carries no usable line number. The snippet is truncated to maxSnippetLen.
+func offendingLine(err error, body []byte) string {
+	m := lineNumRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		return ""
+	}
+	n, convErr := strconv.Atoi(m[1])
+	if convErr != nil || n < 1 {
+		return ""
+	}
+	lines := strings.Split(string(body), "\n")
+	if n > len(lines) {
+		return ""
+	}
+	line := strings.TrimRight(lines[n-1], "\r")
+	if len(line) > maxSnippetLen {
+		line = line[:maxSnippetLen] + "…"
+	}
+	return fmt.Sprintf(", line %d: %q", n, line)
 }
 
 // Parse decodes a Prometheus text exposition into metric families keyed by name.
