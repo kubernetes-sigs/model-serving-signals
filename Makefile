@@ -36,6 +36,8 @@ KIND_CLUSTER_NAME ?= kind
 LOCALBIN ?= $(shell pwd)/bin
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.15.0
+KIND ?= $(LOCALBIN)/kind
+KIND_VERSION ?= v0.33.0
 
 ##@ General
 
@@ -72,6 +74,11 @@ golangci-lint: $(LOCALBIN) ## Install golangci-lint locally if necessary.
 	@test -x $(GOLANGCI_LINT) && $(GOLANGCI_LINT) version | grep -q $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) || \
 		GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
+.PHONY: kind
+kind: $(LOCALBIN) ## Install kind locally if necessary.
+	@test -x $(KIND) && $(KIND) version | grep -q $(KIND_VERSION) || \
+		GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint against code.
 	$(GOLANGCI_LINT) run
@@ -85,8 +92,8 @@ test: fmt vet lint verify-boilerplate ## Run unit tests.
 	go test ./...
 
 .PHONY: test-e2e
-test-e2e: ## Run vLLM simulator end-to-end test in kind.
-	./hack/test-e2e.sh
+test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
+	PATH="$(LOCALBIN):$$PATH" ./hack/test-e2e.sh
 
 .PHONY: image-build
 image-build: ## Build the multi-arch image for PLATFORMS with buildx (add PUSH=--push to push).

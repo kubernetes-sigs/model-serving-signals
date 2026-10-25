@@ -34,9 +34,12 @@ cd "${REPO_ROOT}"
 # Dedicated, disposable cluster; ports and timeout match the manifest and the
 # Go test defaults, so they are plain constants rather than env knobs.
 KIND_CLUSTER_NAME="model-serving-signals-e2e"
+KIND_CONFIG_FILE="${REPO_ROOT}/test/e2e/kind-config.yaml"
 KUBE_CONTEXT="kind-${KIND_CLUSTER_NAME}"
 MANIFEST="${REPO_ROOT}/test/e2e/manifests/vllm.yaml"
 POD_NAME="mss-e2e"
+# Must match the image referenced in the manifest (imagePullPolicy: Never).
+EXPORTER_IMAGE="model-serving-signals/exporter:dev"
 # The Go test resolves the profile relative to its own source when unset; set it
 # here so the harness is the single source of the default.
 export E2E_PROFILE_PATH="${REPO_ROOT}/catalog/profiles/vllm.yaml"
@@ -74,10 +77,13 @@ done
 
 log "creating kind cluster ${KIND_CLUSTER_NAME}"
 kind delete cluster --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1 || true
-kind create cluster --name "${KIND_CLUSTER_NAME}"
+kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${KIND_CONFIG_FILE}"
 
 log "building and loading exporter image"
-make image-load KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}"
+# IMAGE is pinned on the command line (which beats the environment) because CI
+# systems such as Prow export their own IMAGE variable, which would otherwise
+# make the Makefile's `IMAGE ?=` build and load the wrong image.
+make image-load KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" IMAGE="${EXPORTER_IMAGE}"
 
 log "deploying ${POD_NAME}"
 kubectl --context "${KUBE_CONTEXT}" apply -f "${MANIFEST}"
