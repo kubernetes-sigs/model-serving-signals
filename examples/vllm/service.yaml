@@ -1,0 +1,15 @@
+# Exposes the contract metrics endpoint (:9464) served by the exporter sidecar
+# so a Prometheus scraper can collect the engine-agnostic signals.
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen2-5-0-5b-signals
+  labels:
+    app: qwen2-5-0-5b
+spec:
+  selector:
+    app: qwen2-5-0-5b
+  ports:
+    - name: contract
+      port: 9464
+      targetPort: contract

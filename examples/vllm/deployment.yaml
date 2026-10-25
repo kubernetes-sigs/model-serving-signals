@@ -1,0 +1,78 @@
+# Example: vLLM model server with the model-serving-signals metrics exporter
+# running as a sidecar in a single pod.
+#
+# The exporter scrapes vLLM's native metrics on localhost:8000/metrics, maps
+# them onto the signal contract using the bundled vLLM profile, and re-emits
+# them on :9464 under engine-agnostic names.
+#
+# This runs Qwen2.5-0.5B-Instruct, which downloads from Hugging Face without an
+# access request, so no Hugging Face token is needed. vLLM still needs a GPU
+# node; adjust the image, model, resources, and node selection for your cluster.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen2-5-0-5b
+  labels:
+    app: qwen2-5-0-5b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qwen2-5-0-5b
+  template:
+    metadata:
+      labels:
+        app: qwen2-5-0-5b
+    spec:
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"
+      containers:
+        # The metrics exporter sidecar. Scrapes the engine on localhost:8000,
+        # maps to contract signals via the vLLM profile baked into the image
+        # at /catalog, and serves the contract metrics on :9464.
+        - name: metrics-exporter
+          image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main
+          args:
+            - --profile=/catalog/profiles/vllm.yaml
+            - --engine-host=localhost
+            - --engine-metrics-port=8000
+            - --engine-metrics-path=/metrics
+            - --exporter-metrics-port=9464
+          ports:
+            - name: contract
+              containerPort: 9464
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: contract
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+        # The model server. Exposes native Prometheus metrics on :8000/metrics.
+        - name: qwen2-5-0-5b
+          image: vllm/vllm-openai:v0.31.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - "vllm serve Qwen/Qwen2.5-0.5B-Instruct --trust-remote-code --enable-chunked-prefill --max-num-batched-tokens 1024"
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "2"
+              memory: 6G
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "10"
+              memory: 20G
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
