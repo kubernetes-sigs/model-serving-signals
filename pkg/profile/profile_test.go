@@ -55,12 +55,16 @@ func TestParse(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := Parse([]byte(tc.yaml))
+			profile, err := Parse([]byte(tc.yaml))
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				m, ok := p.Metric(contract.RequestDuration)
+				signal, ok := contract.Signals["gen_ai.server.request.duration"]
+				if !ok {
+					t.Fatal("contract signal gen_ai.server.request.duration is not registered")
+				}
+				m, ok := profile.Metric(signal)
 				if !ok || m != "vllm:e2e_request_latency_seconds" {
 					t.Errorf("Metric(RequestDuration) = %q, %v", m, ok)
 				}

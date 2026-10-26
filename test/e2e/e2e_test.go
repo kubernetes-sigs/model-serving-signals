@@ -128,9 +128,10 @@ func TestExporterMatchesEngine(t *testing.T) {
 		_ = infer(inflightCtx, completionsURL, model, 256)
 	}()
 
-	runningNative, ok := prof.Signals[contract.RequestRunning.Name]
+	const runningSignal = "gen_ai.server.request.running"
+	runningNative, ok := prof.Signals[runningSignal]
 	if !ok {
-		t.Fatalf("profile does not map %q; cannot gate on in-flight requests", contract.RequestRunning.Name)
+		t.Fatalf("profile does not map %q; cannot gate on in-flight requests", runningSignal)
 	}
 	waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
 
@@ -146,12 +147,12 @@ func TestExporterMatchesEngine(t *testing.T) {
 	}
 
 	for signalName, nativeName := range prof.Signals {
-		signal, ok := contract.Lookup(signalName)
+		signal, ok := contract.Signals[signalName]
 		if !ok {
 			t.Errorf("profile maps %q which is not a contract signal", signalName)
 			continue
 		}
-		contractName := signal.PrometheusName()
+		contractName := signal.PrometheusName
 
 		t.Run(signalName, func(t *testing.T) {
 			nativeFam, ok := native[nativeName]
@@ -170,7 +171,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 
 // waitForRunning polls the engine until the given native gauge is > 0, so the
 // in-flight request is actually observable before the test scrapes.
-func waitForRunning(t *testing.T, scraper *translator.HTTP, nativeName string, timeout time.Duration) {
+func waitForRunning(t *testing.T, scraper *translator.HTTPScraper, nativeName string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -212,9 +213,9 @@ func infer(ctx context.Context, completionsURL, model string, maxTokens int) err
 
 // compareFamily asserts the emitted contract family equals the native family,
 // dispatching on the contract signal's instrument type.
-func compareFamily(t *testing.T, signal contract.Signal, native, emitted *dto.MetricFamily) {
+func compareFamily(t *testing.T, signal *contract.Signal, native, emitted *dto.MetricFamily) {
 	t.Helper()
-	switch contract.TypeName(signal.Type) {
+	switch signal.MetricTypeName {
 	case "gauge":
 		assertEqual(t, "gauge value", gaugeTotal(native), gaugeTotal(emitted))
 	case "histogram":
@@ -223,7 +224,7 @@ func compareFamily(t *testing.T, signal contract.Signal, native, emitted *dto.Me
 		assertEqual(t, "histogram sample sum", n.GetSampleSum(), e.GetSampleSum())
 		assertBuckets(t, n, e)
 	default:
-		t.Fatalf("unsupported contract instrument type %q for signal %q", contract.TypeName(signal.Type), signal.Name)
+		t.Fatalf("unsupported contract instrument type %q for signal %q", signal.MetricTypeName, signal.Name)
 	}
 }
 

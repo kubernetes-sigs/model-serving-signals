@@ -42,7 +42,7 @@ func TestHTTPScrape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	families, err := (&HTTP{URL: srv.URL + "/metrics"}).Scrape(context.Background())
+	families, err := (&HTTPScraper{URL: srv.URL + "/metrics"}).Scrape(context.Background())
 	if err != nil {
 		t.Fatalf("Scrape: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestHTTPScrapeNon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := (&HTTP{URL: srv.URL}).Scrape(context.Background()); err == nil {
+	if _, err := (&HTTPScraper{URL: srv.URL}).Scrape(context.Background()); err == nil {
 		t.Fatal("expected an error for a non-200 response")
 	}
 }

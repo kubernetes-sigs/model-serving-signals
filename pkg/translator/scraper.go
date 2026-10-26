@@ -35,24 +35,24 @@ type Scraper interface {
 	Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error)
 }
 
-// HTTP scrapes a Prometheus text exposition endpoint such as vLLM's or SGLang's /metrics.
-type HTTP struct {
+// HTTPScraper scrapes a Prometheus text exposition endpoint such as vLLM's or SGLang's /metrics.
+type HTTPScraper struct {
 	// URL is the engine's metrics endpoint, e.g. "http://localhost:8000/metrics".
 	URL string
 	// Client is the HTTP client to use; http.DefaultClient when nil.
 	Client *http.Client
 }
 
-var _ Scraper = (*HTTP)(nil)
+var _ Scraper = (*HTTPScraper)(nil)
 
 // NewHTTPScraper returns an HTTP scraper for the metrics endpoint at http://host:port/path.
-func NewHTTPScraper(host string, port int, path string) *HTTP {
+func NewHTTPScraper(host string, port int, path string) *HTTPScraper {
 	u := url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: path}
-	return &HTTP{URL: u.String()}
+	return &HTTPScraper{URL: u.String()}
 }
 
 // Scrape fetches and parses the engine's metrics.
-func (h *HTTP) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error) {
+func (h *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error) {
 	client := h.Client
 	if client == nil {
 		client = http.DefaultClient

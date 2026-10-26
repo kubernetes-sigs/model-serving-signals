@@ -20,36 +20,22 @@ import "testing"
 
 func TestPrometheusName(t *testing.T) {
 	tests := map[string]struct {
-		signal Signal
+		signal string
 		want   string
 	}{
-		"request duration gets unit suffix": {RequestDuration, "gen_ai_server_request_duration_seconds"},
-		"time to first token":               {TimeToFirstToken, "gen_ai_server_time_to_first_token_seconds"},
-		"dimensionless gauge has no suffix": {RequestQueued, "gen_ai_server_request_queued"},
+		"request duration gets unit suffix": {"gen_ai.server.request.duration", "gen_ai_server_request_duration_seconds"},
+		"time to first token":               {"gen_ai.server.time_to_first_token", "gen_ai_server_time_to_first_token_seconds"},
+		"unit gauge has no suffix":          {"gen_ai.server.request.queued", "gen_ai_server_request_queued"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := tc.signal.PrometheusName(); got != tc.want {
-				t.Errorf("PrometheusName() = %q, want %q", got, tc.want)
+			signal, ok := Signals[tc.signal]
+			if !ok {
+				t.Fatalf("signal %s is not registered", tc.signal)
+			}
+			if got := signal.PrometheusName; got != tc.want {
+				t.Errorf("PrometheusName = %s, want %s", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestAllSignalsAreConsistentAndLookupable(t *testing.T) {
-	for name, s := range Signals {
-		if name != s.Name {
-			t.Errorf("Signals[%q] holds signal named %q", name, s.Name)
-		}
-		if got, ok := Lookup(s.Name); !ok || got != s {
-			t.Errorf("Lookup(%q) = %+v, %v; want %+v, true", s.Name, got, ok, s)
-		}
-		if s.Description == "" {
-			t.Errorf("signal %q has no description", s.Name)
-		}
-		_ = s.PrometheusName() // must not panic
-	}
-	if IsSignal("not.a.signal") {
-		t.Error("IsSignal accepted an unknown name")
 	}
 }

@@ -49,9 +49,8 @@ func (s *Server) Start(ctx context.Context) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	address := fmt.Sprintf(":%d", s.MetricsPort)
 	server := &http.Server{
-		Addr:              address,
+		Addr:              fmt.Sprintf(":%d", s.MetricsPort),
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}

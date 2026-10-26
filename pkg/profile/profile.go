@@ -39,7 +39,7 @@ type Profile struct {
 
 // Metric returns the engine's native metric that provides the given contract signal, and whether the
 // engine provides it at all.
-func (p *Profile) Metric(signal contract.Signal) (string, bool) {
+func (p *Profile) Metric(signal *contract.Signal) (string, bool) {
 	m, ok := p.Signals[signal.Name]
 	return m, ok
 }
