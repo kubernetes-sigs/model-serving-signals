@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# GIT_TAG is a git-based tag of the form vYYYYMMDD-hash. In postsubmit builds it
-# is supplied by the cloud build via the _GIT_TAG substitution.
 GIT_TAG ?= $(shell git describe --tags --dirty --always)
+GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
+BUILD_REF ?= $(shell git describe --abbrev=0 2>/dev/null)
 
 DOCKER_BUILDX_CMD ?= docker buildx
 IMAGE_BUILD_CMD ?= $(DOCKER_BUILDX_CMD) build
@@ -97,7 +97,11 @@ test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
 
 .PHONY: image-build
 image-build: ## Build the multi-arch image for PLATFORMS with buildx (add PUSH=--push to push).
-	$(IMAGE_BUILD_CMD) -t $(IMAGE) --platform=$(PLATFORMS) $(PUSH) .
+	$(IMAGE_BUILD_CMD) -t $(IMAGE) \
+	--platform=$(PLATFORMS) \
+	--build-arg COMMIT_SHA=$(GIT_COMMIT_SHA) \
+	--build-arg BUILD_REF=$(BUILD_REF) \
+	$(PUSH) .
 
 .PHONY: image-push
 image-push: PUSH=--push ## Build the multi-arch image and push it to IMAGE, e.g. make image-push IMAGE=user/repo:dev
@@ -105,7 +109,11 @@ image-push: image-build
 
 .PHONY: image-load
 image-load: ## Build the image for the host arch and load it in the local kind cluster.
-	$(IMAGE_BUILD_CMD) -t $(IMAGE) --platform=linux/$(shell go env GOARCH) --load .
+	$(IMAGE_BUILD_CMD) -t $(IMAGE) \
+	--platform=linux/$(shell go env GOARCH) \
+	--build-arg COMMIT_SHA=$(GIT_COMMIT_SHA) \
+	--build-arg BUILD_REF=$(BUILD_REF) \
+	--load .
 	kind load docker-image $(IMAGE) --name $(KIND_CLUSTER_NAME)
 
 ##@ Release
@@ -114,14 +122,17 @@ image-load: ## Build the image for the host arch and load it in the local kind c
 # second tag such as :main alongside the git tag.
 ifdef EXTRA_TAG
 IMAGE_BUILD_EXTRA_OPTS += -t $(IMAGE_REPO):$(EXTRA_TAG)
+BUILD_REF = $(EXTRA_TAG)
 endif
 
 .PHONY: staging-image-build
 staging-image-build: ## Build the multi-arch staging image with buildx.
 	$(IMAGE_BUILD_CMD) -t $(IMAGE_TAG) \
-		--platform=$(PLATFORMS) \
-		$(PUSH) \
-		$(IMAGE_BUILD_EXTRA_OPTS) .
+	--platform=$(PLATFORMS) \
+	--build-arg COMMIT_SHA=$(GIT_COMMIT_SHA) \
+	--build-arg BUILD_REF=$(BUILD_REF) \
+	$(PUSH) \
+	$(IMAGE_BUILD_EXTRA_OPTS) .
 
 .PHONY: staging-image-push
 staging-image-push: PUSH=--push ## Build and push the multi-arch staging image.

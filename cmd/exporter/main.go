@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/model-serving-signals/pkg/exporter"
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
 	"sigs.k8s.io/model-serving-signals/pkg/translator"
+	"sigs.k8s.io/model-serving-signals/version"
 )
 
 var (
@@ -45,6 +46,7 @@ func main() {
 	pflag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
+	setupLog.Info("metrics-exporter build", "commit-sha", version.CommitSHA, "build-ref", version.BuildRef)
 
 	if err := opts.Complete(); err != nil {
 		setupLog.Error(err, "Failed to complete options")

@@ -17,8 +17,11 @@ ARG BASE_IMAGE=gcr.io/distroless/static:nonroot
 
 FROM --platform=$BUILDPLATFORM ${BUILDER_IMAGE} AS builder
 
+ENV CGO_ENABLED=0
 ARG TARGETOS
 ARG TARGETARCH
+ARG COMMIT_SHA=unknown
+ARG BUILD_REF
 
 WORKDIR /workspace
 
@@ -28,9 +31,11 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY catalog/ catalog/
+COPY version/ version/
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -o exporter ./cmd/exporter
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-X sigs.k8s.io/model-serving-signals/version.CommitSHA=${COMMIT_SHA} -X sigs.k8s.io/model-serving-signals/version.BuildRef=${BUILD_REF}" \
+    -o exporter ./cmd/exporter
 
 FROM ${BASE_IMAGE}
 COPY --from=builder /workspace/exporter /exporter

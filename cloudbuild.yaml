@@ -11,6 +11,7 @@ steps:
       - GIT_TAG=$_GIT_TAG
       - EXTRA_TAG=$_PULL_BASE_REF
       - DOCKER_BUILDX_CMD=/buildx-entrypoint
+      - GIT_COMMIT_SHA=$_PULL_BASE_SHA
 substitutions:
   # _GIT_TAG will be filled with a git-based tag for the image, of the form
   # vYYYYMMDD-hash, and can be used as a substitution.
@@ -18,6 +19,9 @@ substitutions:
   # _PULL_BASE_REF will contain the ref that was pushed to trigger this build -
   # a branch like 'main' or 'release-0.2', or a tag like 'v0.2'.
   _PULL_BASE_REF: 'main'
+  # _PULL_BASE_SHA will contain the Git SHA of the commit that was pushed to
+  # trigger this build.
+  _PULL_BASE_SHA: 'abcdef'
 # Dedicated staging service account with push access to the
 # k8s-staging-model-serving-signals Artifact Registry repo.
 serviceAccount: projects/k8s-staging-images/serviceAccounts/model-serving-signals-sa@k8s-staging-images.iam.gserviceaccount.com
