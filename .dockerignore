@@ -4,3 +4,4 @@
 !cmd/
 !pkg/
 !catalog/
+!version/
