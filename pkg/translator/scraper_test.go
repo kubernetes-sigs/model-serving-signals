@@ -42,7 +42,7 @@ func TestHTTPScrape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	families, err := (&HTTPScraper{URL: srv.URL + "/metrics"}).Scrape(context.Background())
+	families, err := (&HTTPScraper{url: srv.URL + "/metrics"}).Scrape(context.Background())
 	if err != nil {
 		t.Fatalf("Scrape: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestHTTPScrapeNon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := (&HTTPScraper{URL: srv.URL}).Scrape(context.Background()); err == nil {
+	if _, err := (&HTTPScraper{url: srv.URL}).Scrape(context.Background()); err == nil {
 		t.Fatal("expected an error for a non-200 response")
 	}
 }
@@ -90,8 +90,8 @@ func TestNewHTTPScraperURL(t *testing.T) {
 		{"localhost", 8000, "/metrics", "http://localhost:8000/metrics"},
 		{"::1", 9000, "/m", "http://[::1]:9000/m"},
 	} {
-		if got := NewHTTPScraper(tc.host, tc.port, tc.path).URL; got != tc.want {
-			t.Errorf("NewHTTPScraper(%q, %d, %q).URL = %q, want %q", tc.host, tc.port, tc.path, got, tc.want)
+		if got := NewHTTPScraper(tc.host, tc.port, tc.path).(*HTTPScraper).url; got != tc.want {
+			t.Errorf("NewHTTPScraper(%q, %d, %q).url = %q, want %q", tc.host, tc.port, tc.path, got, tc.want)
 		}
 	}
 }

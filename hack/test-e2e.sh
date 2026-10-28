@@ -107,6 +107,6 @@ for _ in $(seq 1 30); do
 done
 
 log "running Go e2e assertions (the test drives inference load itself)"
-go test -tags e2e -count=1 -v ./test/e2e/...
+go test -count=1 -v ./test/e2e/...
 
 log "e2e passed"

@@ -37,42 +37,36 @@ type Scraper interface {
 
 // HTTPScraper scrapes a Prometheus text exposition endpoint such as vLLM's or SGLang's /metrics.
 type HTTPScraper struct {
-	// URL is the engine's metrics endpoint, e.g. "http://localhost:8000/metrics".
-	URL string
-	// Client is the HTTP client to use; http.DefaultClient when nil.
-	Client *http.Client
+	// url is the engine's metrics endpoint, e.g. "http://localhost:8000/metrics".
+	url string
 }
 
 var _ Scraper = (*HTTPScraper)(nil)
 
 // NewHTTPScraper returns an HTTP scraper for the metrics endpoint at http://host:port/path.
-func NewHTTPScraper(host string, port int, path string) *HTTPScraper {
+func NewHTTPScraper(host string, port int, path string) Scraper {
 	u := url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: path}
-	return &HTTPScraper{URL: u.String()}
+	return &HTTPScraper{url: u.String()}
 }
 
 // Scrape fetches and parses the engine's metrics.
-func (h *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error) {
-	client := h.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.URL, nil)
+func (s *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("building scrape request for %s: %w", h.URL, err)
+		return nil, fmt.Errorf("building scrape request for %s: %w", s.url, err)
 	}
 	req.Header.Set("Accept", string(expfmt.NewFormat(expfmt.TypeTextPlain)))
 
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("scraping %s: %w", h.URL, err)
+		return nil, fmt.Errorf("scraping %s: %w", s.url, err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("scraping %s: unexpected status %s", h.URL, resp.Status)
+		return nil, fmt.Errorf("scraping %s: unexpected status %s", s.url, resp.Status)
 	}
 
 	// Parse decodes a Prometheus text exposition into metric families keyed by name.

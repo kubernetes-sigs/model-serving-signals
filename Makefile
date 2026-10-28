@@ -89,7 +89,7 @@ verify-boilerplate: ## Verify license boilerplate headers on source files.
 
 .PHONY: test
 test: fmt vet lint verify-boilerplate ## Run unit tests.
-	go test ./...
+	go test $$(go list ./... | grep -v /test/e2e)
 
 .PHONY: test-e2e
 test-e2e: kind ## Run vLLM simulator end-to-end test in kind.

@@ -1,5 +1,3 @@
-//go:build e2e
-
 /*
 Copyright The Kubernetes Authors.
 
@@ -139,11 +137,11 @@ func TestExporterMatchesEngine(t *testing.T) {
 	defer cancel()
 	native, err := engineScraper.Scrape(ctx)
 	if err != nil {
-		t.Fatalf("scrape engine %s: %v", engineScraper.URL, err)
+		t.Fatalf("scrape engine: %v", err)
 	}
 	emitted, err := exporterScraper.Scrape(ctx)
 	if err != nil {
-		t.Fatalf("scrape exporter %s: %v", exporterScraper.URL, err)
+		t.Fatalf("scrape exporter: %v", err)
 	}
 
 	for signalName, nativeName := range prof.Signals {
@@ -171,7 +169,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 
 // waitForRunning polls the engine until the given native gauge is > 0, so the
 // in-flight request is actually observable before the test scrapes.
-func waitForRunning(t *testing.T, scraper *translator.HTTPScraper, nativeName string, timeout time.Duration) {
+func waitForRunning(t *testing.T, scraper translator.Scraper, nativeName string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

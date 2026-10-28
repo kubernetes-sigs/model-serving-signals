@@ -17,79 +17,17 @@ limitations under the License.
 package main
 
 import (
-	"flag"
 	"os"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"sigs.k8s.io/model-serving-signals/pkg/exporter"
-	"sigs.k8s.io/model-serving-signals/pkg/profile"
-	"sigs.k8s.io/model-serving-signals/pkg/translator"
-	"sigs.k8s.io/model-serving-signals/version"
-)
-
-var (
-	setupLog = ctrl.Log.WithName("setup")
+	"sigs.k8s.io/model-serving-signals/cmd/exporter/runner"
 )
 
 func main() {
-	// parse cmd-line args
-	zapOpts := zap.Options{Development: true}
-	zapOpts.BindFlags(flag.CommandLine)
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	opts := exporter.NewOptions()
-	opts.AddFlags(pflag.CommandLine)
-	pflag.Parse()
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
-	setupLog.Info("metrics-exporter build", "commit-sha", version.CommitSHA, "build-ref", version.BuildRef)
-
-	if err := opts.Complete(); err != nil {
-		setupLog.Error(err, "Failed to complete options")
-		os.Exit(1)
-	}
-	if err := opts.Validate(); err != nil {
-		setupLog.Error(err, "Failed to validate options")
+	if err := runner.NewRunner().Run(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)
 	}
 
-	engineProfile, err := profile.Load(opts.ProfilePath)
-	if err != nil {
-		setupLog.Error(err, "Failed to load engine profile")
-		os.Exit(1)
-	}
-	setupLog.Info("Loaded engine profile", "engine", engineProfile.Name, "signals", len(engineProfile.Signals))
-
-	ctx := ctrl.SetupSignalHandler()
-	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
-
-	engineScraper := translator.NewHTTPScraper(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
-	collector, err := translator.New(ctx, engineScraper, engineProfile, opts.ScrapeTimeout,
-		translator.WithLogger(ctrl.Log.WithName("translator")),
-	)
-	if err != nil {
-		setupLog.Error(err, "Failed to build contract collector")
-		os.Exit(1)
-	}
-
-	registry := prometheus.NewRegistry()
-	if err := registry.Register(collector); err != nil {
-		setupLog.Error(err, "Failed to register contract collector")
-		os.Exit(1)
-	}
-
-	metricsExporter := &exporter.Server{
-		MetricsPort: opts.ExporterMetricsPort,
-		Gatherer:    registry,
-	}
-
-	setupLog.Info("Starting metrics exporter", "engineMetricsURL", engineScraper.URL)
-	if err := metricsExporter.Start(ctx); err != nil {
-		setupLog.Error(err, "failed running metrics exporter")
-		os.Exit(1)
-	}
+	// For running with a different scraper, use `runner.NewRunner().WithScraperFactory(scraperFactory).Run(ctx)`
 }
