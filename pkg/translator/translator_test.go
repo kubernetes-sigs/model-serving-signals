@@ -25,6 +25,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
@@ -39,7 +41,8 @@ func (f fakeScraper) Scrape(context.Context) (map[string]*dto.MetricFamily, erro
 	if f.err != nil {
 		return nil, f.err
 	}
-	return parse(strings.NewReader(f.exposition))
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	return parser.TextToMetricFamilies(strings.NewReader(f.exposition))
 }
 
 const testScrapeTimeout = 5 * time.Second

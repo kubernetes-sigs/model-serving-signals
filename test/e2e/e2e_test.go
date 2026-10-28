@@ -54,7 +54,7 @@ import (
 
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
-	"sigs.k8s.io/model-serving-signals/pkg/translator"
+	"sigs.k8s.io/model-serving-signals/pkg/translator/prometheus"
 )
 
 // These match the local kind + port-forward setup in hack/test-e2e.sh and the
@@ -103,8 +103,8 @@ func TestExporterMatchesEngine(t *testing.T) {
 		t.Fatal("profile declares no signals")
 	}
 
-	engineScraper := translator.NewHTTPScraper(engineHost, enginePort, metricsPath)
-	exporterScraper := translator.NewHTTPScraper(exporterHost, exporterPort, metricsPath)
+	engineScraper := prometheus.New(engineHost, enginePort, metricsPath)
+	exporterScraper := prometheus.New(exporterHost, exporterPort, metricsPath)
 	completionsURL := (&url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", engineHost, enginePort), Path: "/v1/completions"}).String()
 
 	// Phase 1: let a batch of requests complete so histograms are populated.
@@ -171,7 +171,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 
 // waitForRunning polls the engine until the given native gauge is > 0, so the
 // in-flight request is actually observable before the test scrapes.
-func waitForRunning(t *testing.T, scraper *translator.HTTPScraper, nativeName string, timeout time.Duration) {
+func waitForRunning(t *testing.T, scraper *prometheus.Scraper, nativeName string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
