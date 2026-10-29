@@ -25,8 +25,28 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
-
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
+)
+
+const (
+	testScrapeTimeout = 5 * time.Second
+
+	vllmExpositionTiny = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
+# TYPE vllm:e2e_request_latency_seconds histogram
+vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="0.5"} 1
+vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="1.0"} 2
+vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="+Inf"} 3
+vllm:e2e_request_latency_seconds_count{model_name="tiny"} 3
+vllm:e2e_request_latency_seconds_sum{model_name="tiny"} 4.5`
+)
+
+var (
+	vllmProfile = &profile.Profile{
+		Name: "vllm",
+		Signals: map[string]string{
+			"gen_ai.server.request.duration": "vllm:e2e_request_latency_seconds",
+		},
+	}
 )
 
 // fakeScraper returns a fixed exposition, as an engine would.
@@ -42,32 +62,9 @@ func (f fakeScraper) Scrape(context.Context) (map[string]*dto.MetricFamily, erro
 	return parse(strings.NewReader(f.exposition))
 }
 
-const testScrapeTimeout = 5 * time.Second
-
-const vllmExpositionTiny = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
-# TYPE vllm:e2e_request_latency_seconds histogram
-vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="0.5"} 1
-vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="1.0"} 2
-vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="+Inf"} 3
-vllm:e2e_request_latency_seconds_count{model_name="tiny"} 3
-vllm:e2e_request_latency_seconds_sum{model_name="tiny"} 4.5
-`
-
-func vllmProfile(t *testing.T) *profile.Profile {
-	t.Helper()
-	p, err := profile.Parse([]byte(`
-name: vllm
-signals:
-  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds
-`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
 func TestCollectHistogram(t *testing.T) {
-	c, err := New(context.Background(), fakeScraper{exposition: vllmExpositionTiny}, vllmProfile(t), testScrapeTimeout)
+
+	c, err := New(context.Background(), fakeScraper{exposition: vllmExpositionTiny}, vllmProfile, testScrapeTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +82,7 @@ gen_ai_server_request_duration_seconds_count{model_name="tiny"} 3
 }
 
 func TestCollectScrapeErrorYieldsNothing(t *testing.T) {
-	c, err := New(context.Background(), fakeScraper{err: errors.New("connection refused")}, vllmProfile(t), testScrapeTimeout)
+	c, err := New(context.Background(), fakeScraper{err: errors.New("connection refused")}, vllmProfile, testScrapeTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}

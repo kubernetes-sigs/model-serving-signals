@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package profile defines engine profiles: declarative mappings from an engine's native metrics onto the contract.
 package profile
 
 import (
@@ -27,7 +26,7 @@ import (
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
 )
 
-// Profile maps an engine's native metrics onto contract signals.
+// Profile maps the contract signals onto the engine's native metrics.
 // A contract signal that is absent from Signals is one the engine does not provide.
 type Profile struct {
 	// Name identifies the engine, e.g. "vllm".
@@ -44,28 +43,20 @@ func (p *Profile) Metric(signal *contract.Signal) (string, bool) {
 	return m, ok
 }
 
-// Load reads and parses the profile at path.
-func Load(path string) (*Profile, error) {
+// New creates a new Profile from the yaml in the given path.
+func New(path string) (*Profile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read profile from path '%s': %w", path, err)
 	}
-	profile, err := Parse(data)
-	if err != nil {
-		return nil, fmt.Errorf("profile '%s': %w", path, err)
-	}
-	return profile, nil
-}
-
-// Parse parses and validates a profile from its YAML representation.
-func Parse(data []byte) (*Profile, error) {
 	profile := &Profile{}
 	if err := yaml.UnmarshalStrict(data, profile); err != nil {
-		return nil, fmt.Errorf("invalid profile yaml: %w", err)
+		return nil, fmt.Errorf("invalid profile yaml '%s': %w", path, err)
 	}
 	if err := validate(profile); err != nil {
 		return nil, fmt.Errorf("invalid profile: %w", err)
 	}
+
 	return profile, nil
 }
 
