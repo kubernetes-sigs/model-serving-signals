@@ -95,3 +95,35 @@ func TestNewHTTPScraperURL(t *testing.T) {
 		}
 	}
 }
+
+func TestScraperFactory(t *testing.T) {
+	for _, kind := range []ScraperKind{"", ScraperPrometheus, ScraperRTPWorkerStatus} {
+		t.Run(string(kind), func(t *testing.T) {
+			s, err := NewScraper(kind, "::1", 8000, "/worker_status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var endpoint string
+			switch concrete := s.(type) {
+			case *HTTPScraper:
+				if kind != "" && kind != ScraperPrometheus {
+					t.Fatal("wrong adapter")
+				}
+				endpoint = concrete.url
+			case *RTPWorkerStatus:
+				if kind != ScraperRTPWorkerStatus {
+					t.Fatal("wrong adapter")
+				}
+				endpoint = concrete.url
+			default:
+				t.Fatalf("unexpected scraper %T", s)
+			}
+			if endpoint != "http://[::1]:8000/worker_status" {
+				t.Fatal(endpoint)
+			}
+		})
+	}
+	if _, err := NewScraper("unknown", "localhost", 8000, "/metrics"); err == nil {
+		t.Fatal("unknown scraper accepted")
+	}
+}

@@ -32,6 +32,8 @@ import (
 type Profile struct {
 	// Name identifies the engine, e.g. "vllm".
 	Name string `json:"name"`
+	// Scraper selects the source protocol. Empty means prometheus for existing profiles.
+	Scraper string `json:"scraper,omitempty"`
 	// Signals is keyed by contract signal name; each value is the name of the engine's native metric that
 	// provides it. The native metric must have the same instrument type as the contract signal.
 	Signals map[string]string `json:"signals"`

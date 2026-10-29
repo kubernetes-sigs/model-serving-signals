@@ -1,0 +1,14 @@
+# Engine profile for RTP-LLM's frontend JSON /worker_status endpoint.
+# Requires --engine-metrics-path /worker_status; the scraper is selected below.
+# These gauge names are derived by the scraper, not emitted by KMonitor.
+# See site-src/extending/rtp-llm.md for supported task phases, versions, and limitations.
+name: rtp-llm
+scraper: rtp-llm-worker-status
+signals:
+  gen_ai.server.request.queued: rtp_llm_worker_status_requests_queued
+  gen_ai.server.request.running: rtp_llm_worker_status_requests_running
+# Latency histograms are temporarily unsupported by this profile:
+# gen_ai.server.request.duration
+# gen_ai.server.time_to_first_token
+# gen_ai.server.time_per_output_token
+# Upstream additions and collection are described in site-src/extending/rtp-llm.md.

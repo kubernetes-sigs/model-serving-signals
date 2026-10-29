@@ -41,9 +41,7 @@ type ScraperFactory func(host string, port int, path string) translator.Scraper
 
 // NewRunner initializes a new metrics-exporter Runner and returns its pointer.
 func NewRunner() *Runner {
-	return &Runner{
-		scraperFactory: translator.NewHTTPScraper,
-	}
+	return &Runner{}
 }
 
 // Runner is a struct that is used to run metrics-exporter and allows replacing the metrics scraper factory.
@@ -51,7 +49,7 @@ type Runner struct {
 	scraperFactory ScraperFactory
 }
 
-// WithScraperFactory replaces the default Prometheus HTTP scraper factory and returns the Runner.
+// WithScraperFactory overrides profile-based scraper selection and returns the Runner.
 func (r *Runner) WithScraperFactory(scraperFactory ScraperFactory) *Runner {
 	r.scraperFactory = scraperFactory
 	return r
@@ -88,7 +86,16 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	ctx = log.IntoContext(ctx, ctrl.Log.WithName("metrics-exporter"))
 
-	engineScraper := r.scraperFactory(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+	var engineScraper translator.Scraper
+	if r.scraperFactory != nil {
+		engineScraper = r.scraperFactory(opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+	} else {
+		engineScraper, err = translator.NewScraper(translator.ScraperKind(engineProfile.Scraper), opts.EngineHost, opts.EngineMetricsPort, opts.EngineMetricsPath)
+		if err != nil {
+			setupLog.Error(err, "Failed to build engine scraper")
+			return err
+		}
+	}
 	collector, err := translator.New(ctx, engineScraper, engineProfile, opts.ScrapeTimeout,
 		translator.WithLogger(ctrl.Log.WithName("translator")),
 	)

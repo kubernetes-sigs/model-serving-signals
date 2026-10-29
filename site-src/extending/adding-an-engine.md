@@ -6,7 +6,7 @@ profile, and the exporter can translate that engine's metrics.
 
 ## 1. Find the engine's native metrics
 
-Start the engine and scrape its Prometheus endpoint (usually `/metrics`). For each contract signal in
+For Prometheus engines, start the engine and scrape its endpoint (usually `/metrics`). For each contract signal in
 [`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go), find the native metric with the same meaning **and
 the same instrument type**. For example, `gen_ai.server.request.duration` is a histogram of end-to-end request
 latency in seconds, so it must be mapped to a native histogram in seconds.
@@ -27,6 +27,10 @@ signals:
   gen_ai.server.time_to_first_token: sglang:time_to_first_token_seconds
   gen_ai.server.request.queued: sglang:num_queue_reqs
 ```
+
+Profiles may declare `scraper: rtp-llm-worker-status` for non-Prometheus input.
+Omitting `scraper` selects `prometheus`, preserving existing profiles. The exporter
+selects the scraper directly from the profile; unsupported kinds fail at startup.
 
 Each entry names the native metric that is re-emitted as is under the contract signal's name. The native
 instrument type must match the contract signal's: a histogram for a histogram signal, a gauge for a gauge
@@ -77,7 +81,11 @@ iterating on a mapping, or for engines not yet in the catalog.
 - The engine exposes a signal with an instrument type the translator does not re-emit yet. See
   [Adding a new signal](adding-a-signal.md), step 3.
 - The engine's metrics endpoint is not Prometheus text format. Implement the `translator.Scraper` interface in
-  [`pkg/translator/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/translator/) and wire it in `cmd/exporter/main.go`.
+  [`pkg/translator/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/translator/) and register its kind in `translator.NewScraper`. A scraper converts the
+  source protocol into typed metric families; the translator does not require Prometheus input.
+  See the [RTP-LLM JSON adapter](rtp-llm.md), selected by its profile's `scraper: rtp-llm-worker-status`,
+  for an example. Keep the source semantics and units intact, and reject incomplete responses rather
+  than turning missing data into zero load.
 
 ## Checklist
 
