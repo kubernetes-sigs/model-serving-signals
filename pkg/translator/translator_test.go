@@ -37,7 +37,8 @@ vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="0.5"} 1
 vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="1.0"} 2
 vllm:e2e_request_latency_seconds_bucket{model_name="tiny",le="+Inf"} 3
 vllm:e2e_request_latency_seconds_count{model_name="tiny"} 3
-vllm:e2e_request_latency_seconds_sum{model_name="tiny"} 4.5`
+vllm:e2e_request_latency_seconds_sum{model_name="tiny"} 4.5
+`
 )
 
 var (
