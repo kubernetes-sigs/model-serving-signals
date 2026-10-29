@@ -1,11 +1,6 @@
 # Engine profile for vLLM
-#
-# Maps vLLM's native metrics onto the model-serving signal contract.
-#
-# Each entry names the native metric that is re-emitted under the contract signal's name.
-# The native instrument type must match the contract signal's.
-#
 # Native names verified against https://docs.vllm.ai/en/latest/usage/metrics/
+#
 name: vllm
 signals:
   gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram, seconds
