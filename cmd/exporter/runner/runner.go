@@ -79,7 +79,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 
-	engineProfile, err := profile.Load(opts.ProfilePath)
+	engineProfile, err := profile.New(opts.ProfilePath)
 	if err != nil {
 		setupLog.Error(err, "Failed to load engine profile")
 		return err

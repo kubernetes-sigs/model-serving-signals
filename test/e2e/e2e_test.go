@@ -93,7 +93,7 @@ func profilePath() string {
 // the engine's native metric that feeds it, including its label set.
 func TestExporterMatchesEngine(t *testing.T) {
 	path := profilePath()
-	prof, err := profile.Load(path)
+	prof, err := profile.New(path)
 	if err != nil {
 		t.Fatalf("load profile %q: %v", path, err)
 	}
