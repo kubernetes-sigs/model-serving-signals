@@ -51,3 +51,11 @@ simulator that emits the engine's native metrics exists:
 2. Add a pod manifest under `test/e2e/manifests/<engine>.yaml` with the
    simulator and the exporter sidecar (see `vllm.yaml`).
 3. Point the test at the profile via `E2E_PROFILE_PATH`.
+
+## Manual GPU diagnostics
+
+`manifests/rtp-llm-histograms.yaml` and `manifests/rtp-llm-histograms-configmap.yaml`
+provide the RTP-LLM engine, histogram bridge, and its script ConfigMap for manual GPU testing.
+They are not applied by `make test-e2e` and do not expose the standard contract metrics.
+See the [RTP-LLM histogram guide](../../site-src/extending/rtp-llm-histograms.md) for image,
+model PVC, deployment, and inference instructions.

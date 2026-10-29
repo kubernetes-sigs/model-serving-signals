@@ -1,0 +1,261 @@
+# Generated from hack/rtp-llm/kmonitor_bridge.py; do not edit the embedded script.
+# Regeneration instructions: site-src/extending/rtp-llm-histograms.md.
+apiVersion: v1
+data:
+  kmonitor_bridge.py: |
+    # Copyright The Kubernetes Authors.
+    #
+    # Licensed under the Apache License, Version 2.0 (the "License");
+    # you may not use this file except in compliance with the License.
+    # You may obtain a copy of the License at
+    #
+    #     http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing, software
+    # distributed under the License is distributed on an "AS IS" BASIS,
+    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    # See the License for the specific language governing permissions and
+    # limitations under the License.
+
+    """Collect RTP-LLM PR #1545 snapshots as native Prometheus histograms.
+
+    Run in an environment containing RTP-LLM and thrift. This diagnostic bridge
+    consumes the Flume destination; it is not a replacement for a general KMonitor
+    collector and does not forward unrelated metrics. No contract names are assigned.
+    """
+
+    import argparse
+    import json
+    import logging
+    import math
+    import re
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+    # Explicit boundaries from RTP-LLM adc4feb851, in seconds. Requiring the full
+    # set prevents publishing a truncated family as a valid distribution.
+    FAMILIES = {
+        "py_rtp_framework_rt_seconds": tuple(0.01 * 2**i for i in range(14)),
+        "py_rtp_response_first_token_rt_seconds": (
+            0.001,
+            0.005,
+            0.01,
+            0.02,
+            0.04,
+            0.06,
+            0.08,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            1,
+            2.5,
+            5,
+            7.5,
+            10,
+        ),
+        "py_rtp_response_iterate_rt_seconds": (
+            0.01,
+            0.025,
+            0.05,
+            0.075,
+            0.1,
+            0.15,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.75,
+            1,
+            2.5,
+        ),
+    }
+    LABEL = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*\Z")
+
+
+    def parse_event(body):
+        fields = body.decode("utf-8").split()
+        if not fields:
+            return None
+        name, separator, component = fields[0].rpartition("_")
+        if not separator or name not in FAMILIES:
+            return None
+        if (
+            len(body) > 65536
+            or len(fields) < 3
+            or component not in ("bucket", "sum", "count")
+        ):
+            raise ValueError("invalid histogram component")
+        timestamp = int(fields[1])
+        value = float(fields[2]) if component == "sum" else int(fields[2])
+        if value < 0 or (component == "sum" and not math.isfinite(value)):
+            raise ValueError("invalid histogram value")
+        tags = {}
+        for item in fields[3:]:
+            key, sep, text = item.partition("=")
+            if not sep or not LABEL.fullmatch(key) or key.startswith("__") or key in tags:
+                raise ValueError("invalid or duplicate label")
+            tags[key] = text
+        if not tags.get("process_instance_id"):
+            raise ValueError("missing process_instance_id")
+        if component == "bucket":
+            bound = float(tags.pop("le"))
+            if bound not in FAMILIES[name] + (math.inf,):
+                raise ValueError("unexpected bucket boundary")
+            component = bound
+        elif "le" in tags:
+            raise ValueError("le label on sum/count")
+        return (name, tuple(sorted(tags.items()))), timestamp, component, value
+
+
+    class Snapshots:
+        def __init__(self, max_age=30, max_series=4096):
+            self.max_age = max_age
+            self.max_series = max_series
+            self.lock = threading.Lock()
+            self.series = {}
+
+        def _expire(self, now):
+            self.series = {
+                key: row for key, row in self.series.items() if now - row[0] <= self.max_age
+            }
+
+        def accept(self, events, now=None):
+            """Install complete snapshots atomically; never add repeated reports."""
+            now = time.time() if now is None else now
+            pending = {}
+            for event in events:
+                if event.headers.get("topic") != "py_kmonitor":
+                    continue
+                parsed = parse_event(event.body)
+                if parsed is None:
+                    continue
+                key, timestamp, component, value = parsed
+                if timestamp > now + 5 or now - timestamp > self.max_age:
+                    raise ValueError("stale or future snapshot")
+                saved_timestamp, parts = pending.setdefault(key, (timestamp, {}))
+                if saved_timestamp != timestamp or component in parts:
+                    raise ValueError("mixed or duplicate snapshot components")
+                parts[component] = value
+            for (name, _), (_, parts) in pending.items():
+                bounds = FAMILIES[name] + (math.inf,)
+                if set(parts) != set(bounds) | {"sum", "count"}:
+                    raise ValueError("incomplete histogram snapshot")
+                counts = [parts[bound] for bound in bounds]
+                if counts != sorted(counts) or counts[-1] != parts["count"]:
+                    raise ValueError("inconsistent histogram counts")
+            with self.lock:
+                self._expire(now)
+                if len(self.series.keys() | pending.keys()) > self.max_series:
+                    raise ValueError("histogram series limit exceeded")
+                for key, (timestamp, parts) in pending.items():
+                    previous = self.series.get(key)
+                    if previous and (
+                        timestamp < previous[0]
+                        or any(parts[c] < previous[1][c] for c in parts)
+                    ):
+                        # Delayed/replayed snapshots must not reset a process's totals.
+                        continue
+                    self.series[key] = (timestamp, parts)
+
+        def render(self, now=None):
+            now = time.time() if now is None else now
+            lines = []
+            with self.lock:
+                self._expire(now)
+                for name, bounds in FAMILIES.items():
+                    rows = [
+                        (tags, parts)
+                        for (family, tags), (_, parts) in self.series.items()
+                        if family == name
+                    ]
+                    if not rows:
+                        continue
+                    lines.append(f"# TYPE {name} histogram")
+                    for tags, parts in sorted(rows):
+
+                        def labels(extra=()):
+                            return (
+                                "{"
+                                + ",".join(
+                                    f"{key}={json.dumps(value, ensure_ascii=False)}"
+                                    for key, value in tags + extra
+                                )
+                                + "}"
+                            )
+
+                        for bound in bounds + (math.inf,):
+                            le = "+Inf" if math.isinf(bound) else str(bound)
+                            lines.append(
+                                f"{name}_bucket{labels((('le', le),))} {parts[bound]}"
+                            )
+                        for component in ("sum", "count"):
+                            lines.append(f"{name}_{component}{labels()} {parts[component]}")
+            return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+    def main():
+        # Reuse the engine's generated Apache Flume protocol, not a new wire format.
+        from thrift.protocol import TCompactProtocol
+        from thrift.server import TServer
+        from thrift.transport import TSocket, TTransport
+        from rtp_llm.aios.kmonitor.python_client.flume import ThriftSourceProtocol
+        from rtp_llm.aios.kmonitor.python_client.flume.ttypes import Status
+
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--bind", default="127.0.0.1")
+        parser.add_argument("--flume-port", type=int, default=4141)
+        parser.add_argument("--metrics-port", type=int, default=19465)
+        parser.add_argument("--max-age", type=int, default=30)
+        args = parser.parse_args()
+        if args.max_age <= 0:
+            parser.error("--max-age must be positive")
+        logging.basicConfig(level=logging.INFO)
+        snapshots = Snapshots(max_age=args.max_age)
+
+        class FlumeHandler:
+            def append(self, event):
+                return self.appendBatch([event])
+
+            def appendBatch(self, events):
+                try:
+                    snapshots.accept(events)
+                    return Status.OK
+                except (ValueError, KeyError, UnicodeError, OverflowError):
+                    logging.exception("Rejected histogram batch")
+                    return Status.FAILED
+
+        class HTTPHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/metrics":
+                    self.send_error(404)
+                    return
+                body = snapshots.render()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        flume = TServer.TThreadedServer(
+            ThriftSourceProtocol.Processor(FlumeHandler()),
+            TSocket.TServerSocket(host=args.bind, port=args.flume_port),
+            TTransport.TFramedTransportFactory(),
+            TCompactProtocol.TCompactProtocolFactory(),
+            daemon=True,
+        )
+        threading.Thread(target=flume.serve, daemon=True).start()
+        logging.info(
+            "Flume :%s -> native histograms :%s/metrics", args.flume_port, args.metrics_port
+        )
+        with ThreadingHTTPServer((args.bind, args.metrics_port), HTTPHandler) as server:
+            server.serve_forever()
+
+
+    if __name__ == "__main__":
+        main()
+kind: ConfigMap
+metadata:
+  name: rtp-llm-bridge

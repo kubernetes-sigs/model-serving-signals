@@ -1,0 +1,94 @@
+# Diagnostic native histograms; not a model-serving-signals contract endpoint.
+# Supply an RTP-LLM image with the latency histogram companions installed.
+# Apply rtp-llm-histograms-configmap.yaml alongside this Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtp-llm-histograms
+spec:
+  replicas: 1
+  # Release the single GPU and model volume before starting a replacement Pod.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rtp-llm-histograms
+  template:
+    metadata:
+      labels:
+        app: rtp-llm-histograms
+    spec:
+      containers:
+        - name: engine
+          image: ${RTP_LLM_IMAGE}
+          command: [python3, -m, rtp_llm.start_server]
+          args:
+            - --checkpoint_path=/models/Qwen3-0.6B
+            - --model_type=qwen_3
+            - --frontend_server_count=1
+            - --start_port=30000
+            - --max_seq_len=2048
+            - --kv_cache_mem_mb=2048
+          env:
+            - name: HIPPO_SLAVE_IP
+              value: "127.0.0.1"
+            - name: HIPPO_ROLE_SHORT_NAME
+              value: rtp-llm-validation
+            - name: RTP_LLM_LATENCY_HISTOGRAM_ENABLED
+              value: "1"
+          ports:
+            - name: inference
+              containerPort: 30000
+          startupProbe:
+            httpGet:
+              path: /health
+              port: inference
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: inference
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              nvidia.com/gpu: "1"
+              memory: 24Gi
+          volumeMounts:
+            - name: model
+              mountPath: /models
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+        - name: histogram-bridge
+          image: ${RTP_LLM_IMAGE}
+          command: [python3, /bridge/kmonitor_bridge.py]
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+          ports:
+            - name: native
+              containerPort: 19465
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: bridge
+              mountPath: /bridge
+              readOnly: true
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: rtp-llm-model
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+        - name: bridge
+          configMap:
+            name: rtp-llm-bridge
