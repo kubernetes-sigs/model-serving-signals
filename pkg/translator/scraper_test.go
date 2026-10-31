@@ -18,11 +18,15 @@ package translator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 )
 
 const vllmExposition = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
@@ -69,6 +73,119 @@ func TestHTTPScrapeNon200(t *testing.T) {
 
 	if _, err := (&HTTPScraper{url: srv.URL}).Scrape(context.Background()); err == nil {
 		t.Fatal("expected an error for a non-200 response")
+	}
+}
+
+// TestHTTPScrapeParseErrorShowsWhatWasServed checks that a parse failure carries enough context
+// to diagnose it from the exporter log alone: the endpoint, the Content-Type it answered with,
+// and the exact line the parser rejected.
+func TestHTTPScrapeParseErrorShowsWhatWasServed(t *testing.T) {
+	cases := []struct {
+		name        string
+		contentType string // empty lets net/http sniff it from the body
+		body        string
+		want        []string
+	}{
+		{
+			// A metric name cannot start with a digit: the "invalid metric name" symptom from #46.
+			name: "metric name starting with a digit",
+			body: "# HELP vllm:num_requests_running running\n" +
+				"# TYPE vllm:num_requests_running gauge\n" +
+				"123bad{model_name=\"m\"} 5\n",
+			want: []string{
+				"invalid metric name",
+				`Content-Type "text/plain; charset=utf-8"`,
+				`line 3: "123bad{model_name=\"m\"} 5"`,
+			},
+		},
+		{
+			// The metrics path points at a UI route, so the server answers with a web page.
+			name:        "HTML page instead of metrics",
+			contentType: "text/html; charset=utf-8",
+			body:        "<!DOCTYPE html>\n<html><body>Not Found</body></html>\n",
+			want: []string{
+				`Content-Type "text/html; charset=utf-8"`,
+				`line 1: "<!DOCTYPE html>"`,
+			},
+		},
+		{
+			// Windows line endings: the parser rejects the "\r", so it must stay visible.
+			name: "CRLF line endings",
+			body: "# TYPE vllm:num_requests_running gauge\r\nvllm:num_requests_running 1\r\n",
+			want: []string{`line 1: "# TYPE vllm:num_requests_running gauge\r"`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.contentType != "" {
+					w.Header().Set("Content-Type", tc.contentType)
+				}
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			endpoint := srv.URL + "/metrics"
+			_, err := (&HTTPScraper{url: endpoint}).Scrape(context.Background())
+			if err == nil {
+				t.Fatal("Scrape succeeded, want a parse error")
+			}
+			msg := err.Error()
+			for _, want := range append([]string{"endpoint " + endpoint}, tc.want...) {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error does not contain %q\nerror: %s", want, msg)
+				}
+			}
+		})
+	}
+}
+
+func TestOffendingLineFromParseError(t *testing.T) {
+	body := []byte("a 1\nb{ 2\nc 3\n")
+	// One byte longer than maxSnippetLen, with a two-byte "é" straddling the cut.
+	wide := "x" + strings.Repeat("é", maxSnippetLen/2)
+
+	cases := []struct {
+		name string
+		err  error
+		body []byte
+		want string
+	}{
+		{
+			name: "parse error wrapped by parse()",
+			err:  fmt.Errorf("parsing engine metrics: %w", expfmt.ParseError{Line: 2, Msg: "boom"}),
+			body: body,
+			want: `, line 2: "b{ 2"`,
+		},
+		{
+			// Only a typed expfmt.ParseError counts; the message text is never parsed.
+			name: "error that merely looks like a parse error",
+			err:  errors.New("text format parsing error in line 2: not really"),
+			body: body,
+		},
+		{
+			name: "line zero",
+			err:  expfmt.ParseError{Line: 0},
+			body: body,
+		},
+		{
+			name: "line past the end of the body",
+			err:  expfmt.ParseError{Line: 42},
+			body: body,
+		},
+		{
+			name: "long line cut on a character boundary",
+			err:  expfmt.ParseError{Line: 1},
+			body: []byte(wide),
+			want: fmt.Sprintf(", line 1: %q", "x"+strings.Repeat("é", maxSnippetLen/2-1)+"…"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := offendingLine(tc.err, tc.body); got != tc.want {
+				t.Errorf("offendingLine() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
