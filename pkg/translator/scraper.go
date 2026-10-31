@@ -17,18 +17,25 @@ limitations under the License.
 package translator
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"unicode/utf8"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 )
+
+// maxSnippetLen caps how much of an offending line is echoed into a parse error so a
+// binary or oversized body cannot blow up the log line.
+const maxSnippetLen = 120
 
 // Scraper fetches an engine's native metrics, keyed by metric family name.
 type Scraper interface {
@@ -69,10 +76,49 @@ func (s *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily,
 		return nil, fmt.Errorf("scraping %s: unexpected status %s", s.url, resp.Status)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading scrape body from %s: %w", s.url, err)
+	}
+
 	// Parse decodes a Prometheus text exposition into metric families keyed by name.
 	// Engine metric names such as "vllm:e2e_request_latency_seconds" contain colons, which are
 	// legal under the legacy validation scheme, so UTF-8 validation is used to accept any engine's names.
-	return parse(resp.Body)
+	families, err := parse(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("%w; endpoint %s%s", err, s.url, offendingLine(err, body))
+	}
+	return families, nil
+}
+
+// offendingLine quotes the body line a text-format parse error points at, as
+// `, line N: "<content>"`, so the log shows what the engine actually sent. It returns "" when err is not an
+// expfmt.ParseError or its line number does not fall inside body.
+func offendingLine(err error, body []byte) string {
+	var perr expfmt.ParseError
+	if !errors.As(err, &perr) || perr.Line < 1 {
+		return ""
+	}
+	lines := bytes.Split(body, []byte("\n"))
+	if perr.Line > len(lines) {
+		return ""
+	}
+	// A trailing "\r" is kept on purpose: CRLF line endings are themselves a parse failure
+	// (e.g. `unknown metric type "gauge\r"`), and %q renders the "\r" visibly.
+	line := truncateUTF8(string(lines[perr.Line-1]), maxSnippetLen)
+	return fmt.Sprintf(", line %d: %q", perr.Line, line)
+}
+
+// truncateUTF8 shortens s to at most n bytes, plus a trailing "…", without splitting a
+// multi-byte character in half.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
 }
 
 // Parse decodes a Prometheus text exposition into metric families keyed by name.
