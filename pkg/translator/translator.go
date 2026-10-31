@@ -117,7 +117,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	families, err := c.scraper.Scrape(ctx)
 	if err != nil {
-		c.logger.Error(err, "Failed to scrape engine metrics")
+		c.logger.Error(err, "Failed to scrape engine metrics", "endpoint", c.scraper.Target())
 		return
 	}
 	for _, m := range c.mappings {
