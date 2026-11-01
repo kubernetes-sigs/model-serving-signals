@@ -7,10 +7,11 @@ consumers see the same metric names and semantics regardless of the engine behin
 
 ## Available profiles
 
-| Engine | Profile                                        |
-|--------|------------------------------------------------|
-| vLLM   | [`profiles/vllm.yaml`](profiles/vllm.yaml)     |
-| SGLang | [`profiles/sglang.yaml`](profiles/sglang.yaml) |
+| Engine       | Profile                                          |
+|--------------|--------------------------------------------------|
+| vLLM         | [`profiles/vllm.yaml`](profiles/vllm.yaml)       |
+| SGLang       | [`profiles/sglang.yaml`](profiles/sglang.yaml)   |
+| TensorRT-LLM | [`profiles/trt-llm.yaml`](profiles/trt-llm.yaml) |
 
 ## Profile format
 
