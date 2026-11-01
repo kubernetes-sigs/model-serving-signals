@@ -40,9 +40,6 @@ The image ships this directory at `/catalog`:
 --profile=/catalog/profiles/vllm.yaml
 ```
 
-`trtllm-serve` answers `/metrics` with JSON iteration stats and serves Prometheus metrics at `/prometheus/metrics`,
-so the TensorRT-LLM profile also needs `--engine-metrics-path=/prometheus/metrics`.
-
 ## Adding a profile
 
 See [Adding a new engine](../site-src/extending/adding-an-engine.md).

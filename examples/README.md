@@ -27,3 +27,12 @@ Scraping the exporter on `:9464` returns the contract signals (`gen_ai_server_*`
 ### Exporter image
 
 The example points at the staging image `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main`, which tracks the main branch. On release this is swapped for the formal `registry.k8s.io` tag.
+
+## TensorRT-LLM
+
+The vLLM example above also works for TensorRT-LLM (`trtllm-serve`) with these changes:
+
+- `trtllm-serve` answers `/metrics` with JSON iteration stats, not Prometheus text, so the exporter cannot parse it.
+- Prometheus metrics are served at `/prometheus/metrics`, and only when `return_perf_metrics: true` is set in the
+  `trtllm-serve --config` file.
+- Run the exporter with `--profile=/catalog/profiles/trt-llm.yaml` and `--engine-metrics-path=/prometheus/metrics`.
