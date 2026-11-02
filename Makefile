@@ -91,6 +91,10 @@ verify-boilerplate: ## Verify license boilerplate headers on source files.
 test: fmt vet lint verify-boilerplate ## Run unit tests.
 	go test $$(go list ./... | grep -v /test/e2e)
 
+.PHONY: update-contract-golden
+update-contract-golden: ## Regenerate the contract signals golden file.
+	go test ./pkg/contract -run TestSignalsGolden -update
+
 .PHONY: test-e2e
 test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
 	PATH="$(LOCALBIN):$$PATH" ./hack/test-e2e.sh
