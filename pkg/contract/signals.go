@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/otel/semconv/v1.41.0/genaiconv"
+	"k8s.io/component-base/metrics"
 )
 
 var (
@@ -44,13 +45,13 @@ func init() {
 	// Signals adopted verbatim from the OpenTelemetry GenAI semantic conventions.
 	// semconv v1.41.0 is the last opentelemetry-go release that ships GenAI conventions; they have since moved to
 	// https://github.com/open-telemetry/semantic-conventions-genai, which has no Go package yet.
-	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerRequestDuration{}, otlptranslator.MetricTypeHistogram))
-	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerTimeToFirstToken{}, otlptranslator.MetricTypeHistogram))
-	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerTimePerOutputToken{}, otlptranslator.MetricTypeHistogram))
+	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerRequestDuration{}, otlptranslator.MetricTypeHistogram, metrics.ALPHA))
+	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerTimeToFirstToken{}, otlptranslator.MetricTypeHistogram, metrics.ALPHA))
+	mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerTimePerOutputToken{}, otlptranslator.MetricTypeHistogram, metrics.ALPHA))
 
 	// Signals defined by this project following the OpenTelemetry GenAI naming conventions until OpenTelemetry standardizes equivalents.
-	mustRegister(newSignal("gen_ai.server.request.queued", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests admitted by the server but not yet scheduled into a batch."))
-	mustRegister(newSignal("gen_ai.server.request.running", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests executing forward passes."))
+	mustRegister(newSignal("gen_ai.server.request.queued", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests admitted by the server but not yet scheduled into a batch.", metrics.ALPHA))
+	mustRegister(newSignal("gen_ai.server.request.running", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests executing forward passes.", metrics.ALPHA))
 }
 
 // mustRegister adds a signal to Signals. It panics on error, since init has no caller to return it to.
@@ -61,11 +62,13 @@ func mustRegister(s *Signal, err error) {
 	Signals[s.Name] = s
 }
 
-func newSignalFromGenAiInstrument(i genaiconvInstrument, t otlptranslator.MetricType) (*Signal, error) {
-	return newSignal(i.Name(), i.Unit(), t, i.Description())
+func newSignalFromGenAiInstrument(i genaiconvInstrument, t otlptranslator.MetricType, stability metrics.StabilityLevel) (*Signal, error) {
+	return newSignal(i.Name(), i.Unit(), t, i.Description(), stability)
 }
 
-func newSignal(name string, unit string, metricType otlptranslator.MetricType, description string) (*Signal, error) {
+// newSignal builds a contract signal. The description is prefixed with the stability level, e.g. "[ALPHA] ...",
+// following the Kubernetes metrics convention for HELP text.
+func newSignal(name string, unit string, metricType otlptranslator.MetricType, description string, stability metrics.StabilityLevel) (*Signal, error) {
 	metric := otlptranslator.Metric{Name: name, Unit: unit, Type: metricType}
 	prometheusName, err := otelMetricNamer.Build(metric)
 	if err != nil {
@@ -77,7 +80,7 @@ func newSignal(name string, unit string, metricType otlptranslator.MetricType, d
 
 	return &Signal{
 		Metric:         metric,
-		Description:    description,
+		Description:    fmt.Sprintf("[%s] %s", stability, description),
 		PrometheusName: prometheusName,
 		MetricTypeName: metricTypeName,
 	}, nil
