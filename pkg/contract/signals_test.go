@@ -39,3 +39,11 @@ func TestPrometheusName(t *testing.T) {
 		})
 	}
 }
+
+func TestDescriptionHasStability(t *testing.T) {
+	signal := Signals["gen_ai.server.request.queued"]
+	want := "[ALPHA] Number of requests admitted by the server but not yet scheduled into a batch."
+	if got := signal.Description; got != want {
+		t.Errorf("Description = %q, want %q", got, want)
+	}
+}

@@ -69,7 +69,7 @@ func TestCollectHistogram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `# HELP gen_ai_server_request_duration_seconds Generative AI server request duration such as time-to-last byte or last output token.
+	want := `# HELP gen_ai_server_request_duration_seconds [ALPHA] Generative AI server request duration such as time-to-last byte or last output token.
 # TYPE gen_ai_server_request_duration_seconds histogram
 gen_ai_server_request_duration_seconds_bucket{model_name="tiny",le="0.5"} 1
 gen_ai_server_request_duration_seconds_bucket{model_name="tiny",le="1"} 2

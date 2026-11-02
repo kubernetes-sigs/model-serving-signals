@@ -36,6 +36,9 @@ var RequestQueued = Signal{
 }
 ```
 
+Every new signal starts at `StabilityAlpha`. Promoting it to `StabilityBeta` or `StabilityStable` is a
+separate change, made once the signal is mapped and tested across engines.
+
 Then **add it to `Signals`**, keyed by its name. That map is the contract: profile validation, the translator and
 the tests all go through it, so a signal not listed there does not exist.
 
@@ -87,12 +90,12 @@ code needed. Run it and confirm your signal shows up as a passing subtest.
 ## 5. Update the contract documentation
 
 Add the signal to the table in the [Model server contract](../reference/contract.md), including its
-standard name, instrument type, unit, and semantics. Add the corresponding native metric name for each
+standard name, stability level, instrument type, unit, and semantics. Add the corresponding native metric name for each
 engine that provides it, matching the engine profiles; use `N/A` for engines that do not provide it.
 
 ## Checklist
 
-- [ ] Signal declared in `pkg/contract/signals.go` and added to `Signals`
+- [ ] Signal declared in `pkg/contract/signals.go` with a stability level and added to `Signals`
 - [ ] `TestPrometheusName` covers the new Prometheus name
 - [ ] Mapped in every `catalog/profiles/*.yaml` whose engine provides it
 - [ ] The translator re-emits the signal's instrument type, or a new converter was added with a test
