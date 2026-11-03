@@ -29,7 +29,8 @@ import (
 )
 
 const (
-	testScrapeTimeout = 5 * time.Second
+	testScrapeTimeout         = 5 * time.Second
+	testRequestDurationSignal = "gen_ai.server.request.duration"
 
 	vllmExpositionTiny = `# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
 # TYPE vllm:e2e_request_latency_seconds histogram
@@ -45,7 +46,7 @@ var (
 	vllmProfile = &profile.Profile{
 		Name: "vllm",
 		Signals: map[string]string{
-			"gen_ai.server.request.duration": "vllm:e2e_request_latency_seconds",
+			testRequestDurationSignal: "vllm:e2e_request_latency_seconds",
 		},
 	}
 )

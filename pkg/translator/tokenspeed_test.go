@@ -85,6 +85,48 @@ gen_ai_server_request_queued{app_key="",dp_rank="1",model_name="tiny"} 0
 	}
 }
 
+func TestTokenSpeedOfficialImageCollect(t *testing.T) {
+	// Captured from the unmodified official nightly-621b53 image on ACK/A10.
+	// Include the incompatible end-to-end TPOT and admitted-running metrics
+	// as negative guards; neither may leak into the contract output.
+	data, err := os.ReadFile("testdata/tokenspeed-official.prom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := profile.New("../../catalog/profiles/tokenspeed.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector, err := New(context.Background(), fakeScraper{exposition: string(data)}, p, testScrapeTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]string{
+		"tokenspeed:e2e_request_latency_seconds":          testRequestDurationSignal,
+		"tokenspeed:time_to_first_token_seconds":          "gen_ai.server.time_to_first_token",
+		"tokenspeed:decode_time_per_output_token_seconds": "gen_ai.server.time_per_output_token",
+		"tokenspeed:num_requests_waiting":                 "gen_ai.server.request.queued",
+	}
+	var want strings.Builder
+	for _, line := range strings.Split(string(data), "\n") {
+		for native, signalName := range expected {
+			signal := contract.Signals[signalName]
+			if strings.HasPrefix(line, "# HELP "+native+" ") {
+				fmt.Fprintf(&want, "# HELP %s %s\n", signal.PrometheusName, signal.Description)
+			} else if strings.HasPrefix(line, "# TYPE "+native+" ") ||
+				strings.HasPrefix(line, native+"{") ||
+				strings.HasPrefix(line, native+"_bucket{") ||
+				strings.HasPrefix(line, native+"_sum{") ||
+				strings.HasPrefix(line, native+"_count{") {
+				want.WriteString(strings.Replace(line, native, signal.PrometheusName, 1) + "\n")
+			}
+		}
+	}
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(want.String())); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTokenSpeedSMGCollect(t *testing.T) {
 	// Captured after a real streaming completion with tokenspeed-smg
 	// 1.13.0.post20261027 and TokenSpeed 0.1.1.post20261102 on Qwen3-0.6B.
@@ -104,7 +146,7 @@ func TestTokenSpeedSMGCollect(t *testing.T) {
 	// Declare the expected mapping independently of the profile under test.
 	// Keep every captured bucket, count, sum and label in the expectation.
 	expected := map[string]string{
-		"smg_router_generation_duration_seconds":           "gen_ai.server.request.duration",
+		"smg_router_generation_duration_seconds":           testRequestDurationSignal,
 		"smg_router_time_to_first_token_seconds":           "gen_ai.server.time_to_first_token",
 		"smg_router_request_time_per_output_token_seconds": "gen_ai.server.time_per_output_token",
 	}
