@@ -14,8 +14,13 @@ Each signal's description starts with its stability level, e.g. `[ALPHA] Number 
 
 | Contract metric | Stability | Type | Unit | Semantics | [vLLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/vllm.yaml) | [SGLang](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/sglang.yaml) | [TensorRT-LLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/trt-llm.yaml) | [TokenSpeed](../extending/tokenspeed.md) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `gen_ai.server.request.duration` | Alpha | Histogram | `s` (seconds) | Request duration until the last byte or last output token. | `vllm:e2e_request_latency_seconds` | `sglang:e2e_request_latency_seconds` | `trtllm_e2e_request_latency_seconds` | Not provided by engine |
-| `gen_ai.server.time_to_first_token` | Alpha | Histogram | `s` (seconds) | Time to generate the first token for a successful response, including queue and prefill time. | `vllm:time_to_first_token_seconds` | `sglang:time_to_first_token_seconds` | `trtllm_time_to_first_token_seconds` | Not provided by engine |
-| `gen_ai.server.time_per_output_token` | Alpha | Histogram | `s` (seconds) | Average time per output token after the first token, recorded per successful request. | `vllm:request_time_per_output_token_seconds` | `sglang:request_time_per_output_token_seconds` | `trtllm_time_per_output_token_seconds` | Not provided by engine |
+| `gen_ai.server.request.duration` | Alpha | Histogram | `s` (seconds) | Request duration until the last byte or last output token. | `vllm:e2e_request_latency_seconds` | `sglang:e2e_request_latency_seconds` | `trtllm_e2e_request_latency_seconds` | `smg_router_generation_duration_seconds` (SMG frontend) |
+| `gen_ai.server.time_to_first_token` | Alpha | Histogram | `s` (seconds) | Time to generate the first token for a successful response, including queue and prefill time. | `vllm:time_to_first_token_seconds` | `sglang:time_to_first_token_seconds` | `trtllm_time_to_first_token_seconds` | `smg_router_time_to_first_token_seconds` (SMG frontend) |
+| `gen_ai.server.time_per_output_token` | Alpha | Histogram | `s` (seconds) | Average time per output token after the first token, recorded per successful request. | `vllm:request_time_per_output_token_seconds` | `sglang:request_time_per_output_token_seconds` | `trtllm_time_per_output_token_seconds` | `smg_router_request_time_per_output_token_seconds` (SMG frontend) |
 | `gen_ai.server.request.queued` | Alpha | Gauge | `{request}` | Number of requests admitted by the server but not yet scheduled into a batch. | `vllm:num_requests_waiting` | `sglang:num_queue_reqs` | `trtllm_num_requests_waiting` | `tokenspeed:num_requests_waiting` |
 | `gen_ai.server.request.running` | Alpha | Gauge | `{request}` | Number of requests executing forward passes. | `vllm:num_requests_running` | `sglang:num_running_reqs` | `trtllm_num_requests_running` | Not mapped (different semantics) |
+
+TokenSpeed uses two profiles because its engine and SMG frontend expose separate
+endpoints: `tokenspeed.yaml` for queue load and `tokenspeed-smg.yaml` for latency.
+The frontend latency mapping is validated for regular single-node serving;
+TTFT and TPOT require streaming responses. See the [TokenSpeed guide](../extending/tokenspeed.md).

@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"sigs.k8s.io/model-serving-signals/pkg/contract"
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
 )
 
@@ -80,5 +82,47 @@ gen_ai_server_request_queued{app_key="",dp_rank="1",model_name="tiny"} 0
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestTokenSpeedSMGCollect(t *testing.T) {
+	// Captured after a real streaming completion with tokenspeed-smg
+	// 1.13.0.post20261027 and TokenSpeed 0.1.1.post20261102 on Qwen3-0.6B.
+	// Fixture label order is normalized for the text comparison.
+	data, err := os.ReadFile("testdata/tokenspeed-smg.prom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := profile.New("../../catalog/profiles/tokenspeed-smg.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector, err := New(context.Background(), fakeScraper{exposition: string(data)}, p, testScrapeTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Declare the expected mapping independently of the profile under test.
+	// Keep every captured bucket, count, sum and label in the expectation.
+	expected := map[string]string{
+		"smg_router_generation_duration_seconds":           "gen_ai.server.request.duration",
+		"smg_router_time_to_first_token_seconds":           "gen_ai.server.time_to_first_token",
+		"smg_router_request_time_per_output_token_seconds": "gen_ai.server.time_per_output_token",
+	}
+	var want strings.Builder
+	for _, line := range strings.Split(string(data), "\n") {
+		for native, signalName := range expected {
+			signal := contract.Signals[signalName]
+			if strings.HasPrefix(line, "# HELP "+native+" ") {
+				fmt.Fprintf(&want, "# HELP %s %s\n", signal.PrometheusName, signal.Description)
+			} else if strings.HasPrefix(line, "# TYPE "+native+" ") || strings.HasPrefix(line, native+"_") {
+				want.WriteString(strings.Replace(line, native, signal.PrometheusName, 1) + "\n")
+			}
+		}
+	}
+	// The captured response-head timer is deliberately excluded: it was
+	// 0.000296204 s while generation took 0.985302857 s. Mapping it to the
+	// end-to-end duration would silently lose the streaming body.
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(want.String())); err != nil {
+		t.Fatal(err)
 	}
 }

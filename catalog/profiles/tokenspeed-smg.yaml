@@ -1,0 +1,9 @@
+# TokenSpeed's SMG frontend metrics, verified with tokenspeed-smg 1.13.0.post20261027.
+# Scrape --prometheus-port, separately from the engine's --metrics-port.
+# The generation timer includes the streaming body; router_request_duration
+# stops when the response head is returned and cannot provide request.duration.
+name: tokenspeed-smg
+signals:
+  gen_ai.server.request.duration: smg_router_generation_duration_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: smg_router_time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.time_per_output_token: smg_router_request_time_per_output_token_seconds # histogram, seconds

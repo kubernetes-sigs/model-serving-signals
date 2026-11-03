@@ -4,8 +4,8 @@
 # tokenspeed-engine/crates/ts-control/src/event_loop.rs
 #
 # Enable --enable-metrics and scrape the engine's --metrics-port, not the
-# gateway's API or Prometheus port. Latency histograms belong to the frontend
-# and are not provided by this engine profile.
+# gateway's API or Prometheus port. Use tokenspeed-smg.yaml on the gateway's
+# Prometheus port for the three latency histograms.
 # num_requests_running includes queued requests in this version, so it does not
 # provide the contract's request.running signal.
 name: tokenspeed
