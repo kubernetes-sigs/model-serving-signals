@@ -63,6 +63,8 @@ func (f fakeScraper) Scrape(context.Context) (map[string]*dto.MetricFamily, erro
 	return parse(strings.NewReader(f.exposition))
 }
 
+func (f fakeScraper) Target() string { return "fake://metrics" }
+
 func TestCollectHistogram(t *testing.T) {
 
 	c, err := New(context.Background(), fakeScraper{exposition: vllmExpositionTiny}, vllmProfile, testScrapeTimeout)
