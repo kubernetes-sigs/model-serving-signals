@@ -43,8 +43,17 @@ curl -s http://localhost:9464/metrics
 All four contract metrics are available on port 9464. The native engine metrics
 bind to loopback port 8001 inside the Pod. TPOT uses the engine's decode-time
 histogram, which excludes the first token and queueing time. This pinned image
-does not need a gateway metrics exporter. For other versions and the remaining
-running-request gap, see the [TokenSpeed profile documentation](../../site-src/extending/tokenspeed.md).
+does not need a gateway metrics exporter.
+
+In TokenSpeed `0.1.1.post20261102`, native request histograms are absent: the
+engine profile provides queue load only. With SMG `1.13.0.post20261027`, use
+[`tokenspeed-smg.yaml`](../../catalog/profiles/tokenspeed-smg.yaml) in a second
+exporter scraping the gateway's `--prometheus-port` for latency. That profile
+targets the newer SMG metric names, not the older SMG bundled in this image.
+
+`gen_ai.server.request.running` remains unmapped because the native running
+gauge includes queued requests. With one execution slot, the official image
+reported three running requests while two were queued.
 
 To remove the example:
 

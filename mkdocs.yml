@@ -39,7 +39,6 @@ nav:
   - Extending:
     - Adding a Signal: extending/adding-a-signal.md
     - Adding an Engine: extending/adding-an-engine.md
-    - TokenSpeed: extending/tokenspeed.md
   - Reference:
     - Signal Catalog: reference/index.md
     - Model Server Contract: reference/contract.md

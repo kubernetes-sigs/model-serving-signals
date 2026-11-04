@@ -12,7 +12,7 @@ Each signal has a stability level, using the [Kubernetes metric stability levels
 
 Each signal's description starts with its stability level, e.g. `[ALPHA] Number of requests executing forward passes.`, following the Kubernetes metrics convention.
 
-| Contract metric | Stability | Type | Unit | Semantics | [vLLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/vllm.yaml) | [SGLang](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/sglang.yaml) | [TensorRT-LLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/trt-llm.yaml) | [TokenSpeed](../extending/tokenspeed.md) |
+| Contract metric | Stability | Type | Unit | Semantics | [vLLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/vllm.yaml) | [SGLang](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/sglang.yaml) | [TensorRT-LLM](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/trt-llm.yaml) | [TokenSpeed](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/tokenspeed.yaml) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `gen_ai.server.request.duration` | Alpha | Histogram | `s` (seconds) | Request duration until the last byte or last output token. | `vllm:e2e_request_latency_seconds` | `sglang:e2e_request_latency_seconds` | `trtllm_e2e_request_latency_seconds` | `tokenspeed:e2e_request_latency_seconds` (engine) / `smg_router_generation_duration_seconds` (SMG) |
 | `gen_ai.server.time_to_first_token` | Alpha | Histogram | `s` (seconds) | Time to generate the first token for a successful response, including queue and prefill time. | `vllm:time_to_first_token_seconds` | `sglang:time_to_first_token_seconds` | `trtllm_time_to_first_token_seconds` | `tokenspeed:time_to_first_token_seconds` (engine) / `smg_router_time_to_first_token_seconds` (SMG) |
@@ -25,4 +25,4 @@ single engine profile, `tokenspeed.yaml`. In `0.1.1.post20261102`, native reques
 histograms are absent; use the engine profile for queue load and
 `tokenspeed-smg.yaml` with SMG `1.13.0.post20261027` for latency. The SMG mapping
 requires streaming responses for TTFT/TPOT and was validated for regular
-single-node serving. See the [TokenSpeed guide](../extending/tokenspeed.md).
+single-node serving. See the [Kubernetes example](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/examples/tokenspeed).
