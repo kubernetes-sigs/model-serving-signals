@@ -63,8 +63,8 @@ the exporter log as `Failed to convert native metric`.
 
 The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
 drives a simulated engine and asserts the exporter's contract metrics match the engine's native metrics for
-every signal in the profile. If a CPU simulator exists for your engine, add a manifest under
-`test/e2e/manifests/` and wire it into the harness so the new profile is exercised in CI. Run `make test-e2e`
+every signal in the profile. If a CPU simulator exists for your engine, add it to the pod built in
+`test/e2e/utils.go` and wire it into the harness so the new profile is exercised in CI. Run `make test-e2e`
 to confirm it passes. See the [e2e README](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/test/e2e/README.md).
 
 ## Trying a profile without rebuilding
