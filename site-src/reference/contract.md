@@ -18,11 +18,11 @@ Each signal's description starts with its stability level, e.g. `[ALPHA] Number 
 | `gen_ai.server.time_to_first_token` | Alpha | Histogram | `s` (seconds) | Time to generate the first token for a successful response, including queue and prefill time. | `vllm:time_to_first_token_seconds` | `sglang:time_to_first_token_seconds` | `trtllm_time_to_first_token_seconds` | `tokenspeed:time_to_first_token_seconds` (engine) / `smg_router_time_to_first_token_seconds` (SMG) |
 | `gen_ai.server.time_per_output_token` | Alpha | Histogram | `s` (seconds) | Average time per output token after the first token, recorded per successful request. | `vllm:request_time_per_output_token_seconds` | `sglang:request_time_per_output_token_seconds` | `trtllm_time_per_output_token_seconds` | `tokenspeed:decode_time_per_output_token_seconds` (engine) / `smg_router_request_time_per_output_token_seconds` (SMG) |
 | `gen_ai.server.request.queued` | Alpha | Gauge | `{request}` | Number of requests admitted by the server but not yet scheduled into a batch. | `vllm:num_requests_waiting` | `sglang:num_queue_reqs` | `trtllm_num_requests_waiting` | `tokenspeed:num_requests_waiting` |
-| `gen_ai.server.request.running` | Alpha | Gauge | `{request}` | Number of requests executing forward passes. | `vllm:num_requests_running` | `sglang:num_running_reqs` | `trtllm_num_requests_running` | Not mapped (different semantics) |
+| `gen_ai.server.request.running` | Alpha | Gauge | `{request}` | Number of requests executing forward passes. | `vllm:num_requests_running` | `sglang:num_running_reqs` | `trtllm_num_requests_running` | `tokenspeed:num_requests_running - tokenspeed:num_requests_waiting` |
 
-The official TokenSpeed `nightly-621b53` image provides four signals with the
+The official TokenSpeed `nightly-621b53` image provides five signals with the
 single engine profile, `tokenspeed.yaml`. In `0.1.1.post20261102`, native request
-histograms are absent; use the engine profile for queue load and
+histograms are absent; use the engine profile for queued and derived running request counts, and
 `tokenspeed-smg.yaml` with SMG `1.13.0.post20261027` for latency. The SMG mapping
 requires streaming responses for TTFT/TPOT and was validated for regular
 single-node serving. See the [Kubernetes example](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/examples/tokenspeed).

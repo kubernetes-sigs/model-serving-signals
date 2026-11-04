@@ -1,5 +1,5 @@
 # TokenSpeed and SMG run as child processes in the same engine container.
-# One exporter sidecar scrapes all four signals from this image's engine endpoint.
+# One exporter sidecar provides all five signals from this image's engine endpoint.
 # Create the tokenspeed-profiles ConfigMap as described in README.md first.
 apiVersion: apps/v1
 kind: Deployment

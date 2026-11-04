@@ -26,12 +26,26 @@ signals:
 ```
 
 - `name` identifies the engine.
-- `signals` maps contract signal names to the engine's native metric names, as exposed on the engine's
+- `signals` maps contract signal names to native metric names or gauge differences from the engine's
   `/metrics` endpoint.
 - Every key must be a signal defined in the contract; unknown fields are rejected.
 - The native metric must have the same instrument type as the contract signal (for example, a histogram for
   `gen_ai.server.request.duration`); otherwise the metrics-exporter reports a mismatch and does not emit that signal.
 - A contract signal that is left out of `signals` is one the engine does not provide; metrics-exporter skips it.
+
+For gauge signals, a value can also be `metric - metric`, with whitespace around the minus sign:
+
+```yaml
+name: tokenspeed
+signals:
+  gen_ai.server.request.running: tokenspeed:num_requests_running - tokenspeed:num_requests_waiting
+```
+
+Both operands must be gauges from the same scrape. Samples are matched by their complete label sets,
+independent of label order, and the matching labels are preserved. Missing metrics or unmatched series
+produce no output, rather than assuming zero. Results are not clamped, so negative values remain visible
+if the source gauges are inconsistent during a state transition. Only two bare metric names and subtraction
+are supported; this is not a general PromQL evaluator. Existing single-metric mappings are unchanged.
 
 ## Using a profile
 

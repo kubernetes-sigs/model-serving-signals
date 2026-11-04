@@ -17,8 +17,8 @@ limitations under the License.
 // Package translator converts an engine's native metrics into contract signals.
 //
 // The Collector scrapes the engine on every Prometheus collection, looks up each contract signal's
-// native metric in the engine profile, and re-emits that metric family under the contract name. The
-// native metric must have the same instrument type as the contract signal; the converter for each
+// native metric or gauge difference in the engine profile, and emits it under the contract name.
+// Native metrics must have the same instrument type as the contract signal; the converter for each
 // signal type is chosen by converterFor. Supporting a new engine means adding a profile, not code.
 package translator
 
@@ -27,11 +27,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
 
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
@@ -52,11 +54,35 @@ func converterFor(signal *contract.Signal) (converter, error) {
 	return nil, fmt.Errorf("unsupported signal %s", signal)
 }
 
-// mapping binds a contract signal to the engine's native metric that provides it.
+// mapping binds a contract signal to a native metric or a difference of two native gauges.
 type mapping struct {
-	signal  *contract.Signal
-	native  string
-	convert converter
+	signal   *contract.Signal
+	native   string
+	subtract string
+	convert  converter
+}
+
+// newMapping accepts a native metric name or a difference of two native gauge names.
+// This deliberately supports only subtraction, not arbitrary PromQL expressions.
+func newMapping(signal *contract.Signal, source string) (mapping, error) {
+	convert, err := converterFor(signal)
+	if err != nil {
+		return mapping{}, err
+	}
+	m := mapping{signal: signal, native: source, convert: convert}
+	if model.LegacyValidation.IsValidMetricName(source) {
+		return m, nil
+	}
+	parts := strings.Fields(source)
+	if len(parts) != 3 || parts[1] != "-" ||
+		!model.LegacyValidation.IsValidMetricName(parts[0]) || !model.LegacyValidation.IsValidMetricName(parts[2]) {
+		return mapping{}, fmt.Errorf("signal '%s': expected a native metric name or 'metric - metric', got %q", signal.Name, source)
+	}
+	if signal.Type != otlptranslator.MetricTypeGauge {
+		return mapping{}, fmt.Errorf("signal '%s': subtraction is supported only for gauge signals", signal.Name)
+	}
+	m.native, m.subtract = parts[0], parts[2]
+	return m, nil
 }
 
 // Collector is a prometheus.Collector that exposes an engine's metrics as contract signals.
@@ -80,7 +106,7 @@ func WithLogger(l logr.Logger) Option { return func(c *Collector) { c.logger = l
 
 // New builds a Collector that resolves every contract signal through the given profile. Scrapes run
 // under ctx, bounded per collection by timeout; cancelling ctx stops them.
-// It fails if the profile maps a signal whose type the translator cannot emit.
+// It fails if a mapping has an unsupported signal type or expression.
 func New(ctx context.Context, scraper Scraper, engineProfile *profile.Profile, timeout time.Duration, opts ...Option) (*Collector, error) {
 	c := &Collector{ctx: ctx, scraper: scraper, timeout: timeout, logger: logr.Discard()}
 	for _, opt := range opts {
@@ -93,12 +119,12 @@ func New(ctx context.Context, scraper Scraper, engineProfile *profile.Profile, t
 			c.logger.V(1).Info("Engine does not provide contract signal", "engine", engineProfile.Name, "signal", signal.Name)
 			continue
 		}
-		convert, err := converterFor(signal)
+		m, err := newMapping(signal, native)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("profile '%s': %w", engineProfile.Name, err))
 			continue
 		}
-		c.mappings = append(c.mappings, mapping{signal: signal, native: native, convert: convert})
+		c.mappings = append(c.mappings, m)
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
@@ -127,6 +153,18 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			c.logger.V(1).Info("Native metric not present in scrape", "signal", m.signal.Name, "native", m.native)
 			continue
 		}
+		if m.subtract != "" {
+			right, ok := families[m.subtract]
+			if !ok {
+				c.logger.V(1).Info("Native metric not present in scrape", "signal", m.signal.Name, "native", m.subtract)
+				continue
+			}
+			family, err = subtractGauges(m.signal, family, right)
+			if err != nil {
+				c.logger.Error(err, "Failed to subtract native gauges", "signal", m.signal.Name, "native", m.native, "subtract", m.subtract)
+				continue
+			}
+		}
 		metrics, err := m.convert(m.signal, family)
 		if err != nil {
 			c.logger.Error(err, "Failed to convert native metric", "signal", m.signal.Name, "native", m.native)
@@ -136,6 +174,57 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- metric
 		}
 	}
+}
+
+// subtractGauges matches samples by their complete label sets, like PromQL's default vector matching.
+// Unmatched samples are omitted, and neither input family is modified.
+func subtractGauges(signal *contract.Signal, left, right *dto.MetricFamily) (*dto.MetricFamily, error) {
+	values := make(map[string]float64, len(right.GetMetric()))
+	for _, family := range []*dto.MetricFamily{right, left} {
+		if err := expectType(signal, family, dto.MetricType_GAUGE); err != nil {
+			return nil, err
+		}
+		for _, sample := range family.GetMetric() {
+			if sample.GetGauge() == nil {
+				return nil, fmt.Errorf("native metric '%s' has a sample without gauge data", family.GetName())
+			}
+		}
+	}
+	for _, sample := range right.GetMetric() {
+		key := labelSetKey(sample)
+		if _, exists := values[key]; exists {
+			return nil, fmt.Errorf("native metric '%s' has duplicate label set %s", right.GetName(), key)
+		}
+		values[key] = sample.GetGauge().GetValue()
+	}
+	result := &dto.MetricFamily{Name: left.Name, Type: left.Type}
+	seen := make(map[string]struct{}, len(left.GetMetric()))
+	for _, sample := range left.GetMetric() {
+		key := labelSetKey(sample)
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("native metric '%s' has duplicate label set %s", left.GetName(), key)
+		}
+		seen[key] = struct{}{}
+		value, ok := values[key]
+		if !ok {
+			continue
+		}
+		value = sample.GetGauge().GetValue() - value
+		result.Metric = append(result.Metric, &dto.Metric{
+			Label: sample.GetLabel(),
+			Gauge: &dto.Gauge{Value: &value},
+		})
+	}
+	return result, nil
+}
+
+// labelSetKey canonicalizes a label set without depending on exposition order.
+func labelSetKey(sample *dto.Metric) string {
+	labels := make(model.LabelSet, len(sample.GetLabel()))
+	for _, label := range sample.GetLabel() {
+		labels[model.LabelName(label.GetName())] = model.LabelValue(label.GetValue())
+	}
+	return labels.String()
 }
 
 // convertHistogram re-emits a native Prometheus histogram under the contract signal's name,
