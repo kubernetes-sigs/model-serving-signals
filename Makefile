@@ -96,7 +96,7 @@ update-contract-golden: ## Regenerate the contract signals golden file.
 	go test ./pkg/contract -run TestSignalsGolden -update
 
 .PHONY: test-e2e
-test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
+test-e2e: kind ## Run Dynamo mocker end-to-end tests (vLLM, SGLang, TensorRT-LLM) in kind.
 	PATH="$(LOCALBIN):$$PATH" ./hack/test-e2e.sh
 
 .PHONY: image-build

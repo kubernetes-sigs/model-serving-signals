@@ -14,15 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Runs the simulation-based end-to-end test:
-#   1. ensure a kind cluster exists and load the locally built exporter image;
-#   2. deploy the simulator + exporter pod and wait until both are ready;
-#   3. port-forward the simulator (inference + metrics) and the exporter to localhost;
-#   4. run the Go e2e test, which drives inference load and asserts the exporter's
-#      contract metrics match the simulator's native metrics per the engine profile.
-#
-# A dedicated kind cluster is recreated from scratch on every run and deleted on
-# exit unless E2E_KEEP_CLUSTER is set to "true".
+# Creates a fresh kind cluster, loads the exporter and Dynamo images, then runs
+# the Go e2e test, which deploys and checks each engine in E2E_ENGINES.
+# The cluster is deleted on exit unless E2E_KEEP_CLUSTER=true.
 
 set -o errexit
 set -o nounset
@@ -31,38 +25,17 @@ set -o pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "${REPO_ROOT}"
 
-# Dedicated, disposable cluster; ports and timeout match the manifest and the
-# Go test defaults, so they are plain constants rather than env knobs.
 KIND_CLUSTER_NAME="model-serving-signals-e2e"
 KIND_CONFIG_FILE="${REPO_ROOT}/test/e2e/kind-config.yaml"
-KUBE_CONTEXT="kind-${KIND_CLUSTER_NAME}"
-MANIFEST="${REPO_ROOT}/test/e2e/manifests/vllm.yaml"
-POD_NAME="mss-e2e"
-# Must match the image referenced in the manifest (imagePullPolicy: Never).
-EXPORTER_IMAGE="model-serving-signals/exporter:dev"
-# The Go test resolves the profile relative to its own source when unset; set it
-# here so the harness is the single source of the default.
-export E2E_PROFILE_PATH="${REPO_ROOT}/catalog/profiles/vllm.yaml"
-ENGINE_PORT=8000
-EXPORTER_PORT=9464
-READY_TIMEOUT=120s
-
-pf_pids=()
+MANIFEST="${REPO_ROOT}/test/e2e/manifests/dynamo-mocker.yaml"
+# The manifest is the single source for the images.
+EXPORTER_IMAGE=$(awk '$1 == "image:" && $2 ~ /exporter/ { print $2; exit }' "${MANIFEST}")
+DYNAMO_IMAGE=$(awk '$1 == "image:" && $2 ~ /dynamo/ { print $2; exit }' "${MANIFEST}")
 
 log() { echo "[e2e] $*"; }
 
 cleanup() {
   local code=$?
-  set +o errexit
-  for pid in "${pf_pids[@]:-}"; do
-    [[ -n "${pid}" ]] && kill "${pid}" >/dev/null 2>&1 || true
-  done
-  if [[ ${code} -ne 0 ]]; then
-    log "test failed; dumping pod state"
-    kubectl --context "${KUBE_CONTEXT}" describe pod "${POD_NAME}" 2>/dev/null || true
-    kubectl --context "${KUBE_CONTEXT}" logs "${POD_NAME}" --all-containers --tail=50 2>/dev/null || true
-  fi
-  kubectl --context "${KUBE_CONTEXT}" delete -f "${MANIFEST}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   if [[ "${E2E_KEEP_CLUSTER:-}" != "true" ]]; then
     log "deleting kind cluster ${KIND_CLUSTER_NAME}"
     kind delete cluster --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1 || true
@@ -71,42 +44,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for bin in kind kubectl go curl docker; do
+for bin in kind kubectl go docker; do
   command -v "${bin}" >/dev/null 2>&1 || { log "required tool not found: ${bin}"; exit 1; }
 done
+[[ -n "${EXPORTER_IMAGE}" && -n "${DYNAMO_IMAGE}" ]] || { log "images not found in ${MANIFEST}"; exit 1; }
 
 log "creating kind cluster ${KIND_CLUSTER_NAME}"
 kind delete cluster --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1 || true
-kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${KIND_CONFIG_FILE}"
+kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${KIND_CONFIG_FILE}" --wait 120s
 
-log "building and loading exporter image"
-# IMAGE is pinned on the command line (which beats the environment) because CI
-# systems such as Prow export their own IMAGE variable, which would otherwise
-# make the Makefile's `IMAGE ?=` build and load the wrong image.
+log "building and loading exporter image ${EXPORTER_IMAGE}"
+# Set IMAGE on the command line: CI (e.g. Prow) exports its own IMAGE.
 make image-load KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" IMAGE="${EXPORTER_IMAGE}"
 
-log "deploying ${POD_NAME}"
-kubectl --context "${KUBE_CONTEXT}" apply -f "${MANIFEST}"
+log "pulling and loading Dynamo image ${DYNAMO_IMAGE}"
+# Save only the host platform: `kind load docker-image` exports the full
+# multi-arch index and fails on the platforms that weren't pulled.
+dynamo_platform="linux/$(go env GOARCH)"
+dynamo_archive=$(mktemp)
+docker pull --platform "${dynamo_platform}" "${DYNAMO_IMAGE}"
+docker save --platform "${dynamo_platform}" -o "${dynamo_archive}" "${DYNAMO_IMAGE}"
+kind load image-archive "${dynamo_archive}" --name "${KIND_CLUSTER_NAME}"
+rm -f "${dynamo_archive}"
 
-log "waiting for pod to be ready (timeout ${READY_TIMEOUT})"
-kubectl --context "${KUBE_CONTEXT}" wait --for=condition=Ready "pod/${POD_NAME}" --timeout="${READY_TIMEOUT}"
+# The image import can briefly stall the API server.
+kubectl --context "kind-${KIND_CLUSTER_NAME}" wait --for=condition=Ready nodes --all --timeout=120s
 
-log "port-forwarding engine :${ENGINE_PORT} and exporter :${EXPORTER_PORT}"
-kubectl --context "${KUBE_CONTEXT}" port-forward "pod/${POD_NAME}" "${ENGINE_PORT}:8000" >/dev/null 2>&1 &
-pf_pids+=("$!")
-kubectl --context "${KUBE_CONTEXT}" port-forward "pod/${POD_NAME}" "${EXPORTER_PORT}:9464" >/dev/null 2>&1 &
-pf_pids+=("$!")
-
-# Wait for the forwards to accept connections.
-for _ in $(seq 1 30); do
-  if curl -sf "http://localhost:${ENGINE_PORT}/metrics" >/dev/null 2>&1 &&
-     curl -sf "http://localhost:${EXPORTER_PORT}/metrics" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-log "running Go e2e assertions (the test drives inference load itself)"
-go test -count=1 -v ./test/e2e/...
-
-log "e2e passed"
+log "running Go e2e tests"
+E2E_KUBE_CONTEXT="kind-${KIND_CLUSTER_NAME}" go test -count=1 -v -timeout 45m ./test/e2e/...
