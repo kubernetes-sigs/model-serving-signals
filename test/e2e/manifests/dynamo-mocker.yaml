@@ -1,0 +1,110 @@
+# Copyright The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# End-to-end test workload, shared by every engine: a CPU-only Dynamo frontend
+# and mocker plus the metrics exporter, all in one pod. The mocker emits the
+# engine-native metrics selected by --engine-type; the exporter scrapes them
+# over localhost and re-emits the mapped contract metrics.
+#
+# The Go e2e test renders this template per engine by substituting
+# __ENGINE_TYPE__ (mocker --engine-type: vllm, sglang, trtllm) and __PROFILE__
+# (catalog profile name, baked into the exporter image at /catalog).
+#
+# The frontend and mocker find each other through file-based discovery on a
+# shared emptyDir, so no Dynamo operator, etcd or NATS is needed.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mss-e2e
+  labels:
+    app: mss-e2e
+spec:
+  restartPolicy: Never
+  volumes:
+    - name: dynamo-kv
+      emptyDir: {}
+  containers:
+    - name: frontend
+      # OpenAI-compatible frontend that routes inference to the mocker.
+      image: nvcr.io/nvidia/ai-dynamo/dynamo-planner-nightly:20261103-e37f0b9
+      command:
+        - python3
+        - -m
+        - dynamo.frontend
+        - --http-port=8000
+        - --discovery-backend=file
+      env:
+        - name: DYN_FILE_KV
+          value: /dynamo-kv
+      volumeMounts:
+        - name: dynamo-kv
+          mountPath: /dynamo-kv
+      ports:
+        - name: inference
+          containerPort: 8000
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 5
+        periodSeconds: 2
+    - name: engine
+      # CPU-only simulated engine: fakes inference and emits engine-native
+      # metrics from its system server on DYN_SYSTEM_PORT.
+      image: nvcr.io/nvidia/ai-dynamo/dynamo-planner-nightly:20261103-e37f0b9
+      command:
+        - python3
+        - -m
+        - dynamo.mocker
+        - --model-path=Qwen/Qwen3-0.6B
+        - --engine-type=__ENGINE_TYPE__
+        - --discovery-backend=file
+        # Slow simulated prefill and decode so a request stays in-flight long
+        # enough for the test to observe a non-zero running-requests gauge.
+        - --speedup-ratio=0.1
+      env:
+        - name: DYN_FILE_KV
+          value: /dynamo-kv
+        - name: DYN_SYSTEM_PORT
+          value: "8081"
+      volumeMounts:
+        - name: dynamo-kv
+          mountPath: /dynamo-kv
+      ports:
+        - name: engine-metrics
+          containerPort: 8081
+      readinessProbe:
+        httpGet:
+          path: /metrics
+          port: 8081
+        initialDelaySeconds: 5
+        periodSeconds: 2
+    - name: exporter
+      # Built locally by `make image-load` and loaded into the kind cluster.
+      image: model-serving-signals/exporter:dev
+      imagePullPolicy: Never
+      args:
+        - "--profile=/catalog/profiles/__PROFILE__.yaml"
+        - "--engine-host=localhost"
+        - "--engine-metrics-port=8081"
+        - "--exporter-metrics-port=9464"
+      ports:
+        - name: contract
+          containerPort: 9464
+      readinessProbe:
+        httpGet:
+          path: /metrics
+          port: 9464
+        initialDelaySeconds: 2
+        periodSeconds: 2
