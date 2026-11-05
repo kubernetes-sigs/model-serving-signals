@@ -32,16 +32,12 @@ Each entry names the native metric that is re-emitted as is under the contract s
 instrument type must match the contract signal's: a histogram for a histogram signal, a gauge for a gauge
 signal. See [Adding a new signal](adding-a-signal.md#2-map-the-signal-in-the-engine-profiles).
 
-A gauge signal may instead use `metric - metric`, with whitespace around the minus sign, to subtract
-two native gauges. The exporter matches complete label sets within the same scrape and omits unmatched
-series. No other PromQL syntax is supported. See the [profile format](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/catalog#profile-format).
-
-Profile loading and collector construction enforce these rules:
+Rules, enforced by `profile.Parse`:
 
 - `name` is required.
 - `signals` must contain at least one entry.
 - Every key must be a contract signal name; unknown keys are rejected.
-- Every value is a non-empty native metric name or a gauge difference as described above.
+- Every value is a non-empty native metric name.
 - Unknown top-level fields are rejected.
 
 A contract signal that the engine does not provide is simply omitted. The exporter logs it at debug level and

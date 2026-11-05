@@ -1,14 +1,6 @@
-# Engine profile for TokenSpeed. The official nightly-621b53 image exposes
-# RequestMetrics and EngineMetrics on the same --metrics-port endpoint.
-# Native definitions: python/tokenspeed/runtime/metrics/collector.py at 621b53.
-#
-# 0.1.1.post20261102 removed RequestMetrics; on that version this profile
-# emits the queue and derived running gauges only. Use tokenspeed-smg.yaml for latency
-# with SMG 1.13.0.post20261027.
-# request_time_per_output_token_seconds includes queueing and TTFT; the decode
-# histogram below measures time per output token after the first token.
-# num_requests_running includes queued requests in this version; subtract the
-# waiting gauge to derive the number of requests executing rather than queued.
+# TokenSpeed nightly-621b53, engine --metrics-port.
+# Native histograms are absent in 0.1.1.post20261102; use tokenspeed-smg.yaml for latency.
+# TPOT excludes queueing/TTFT; native running includes waiting requests.
 name: tokenspeed
 signals:
   gen_ai.server.request.duration: tokenspeed:e2e_request_latency_seconds # histogram, seconds

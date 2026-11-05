@@ -31,13 +31,13 @@ import (
 type Profile struct {
 	// Name identifies the engine, e.g. "vllm".
 	Name string `json:"name"`
-	// Signals is keyed by contract signal name; each value is a native metric name or, for gauges,
-	// a 'metric - metric' expression. Native metrics must have the same instrument type as the signal.
+	// Signals is keyed by contract signal name; each value is the name of the engine's native metric that
+	// provides it. The native metric must have the same instrument type as the contract signal.
 	Signals map[string]string `json:"signals"`
 }
 
-// Metric returns the native metric name or gauge expression for the given contract signal,
-// and whether the engine provides it at all.
+// Metric returns the engine's native metric that provides the given contract signal, and whether the
+// engine provides it at all.
 func (p *Profile) Metric(signal *contract.Signal) (string, bool) {
 	m, ok := p.Signals[signal.Name]
 	return m, ok
