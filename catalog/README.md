@@ -24,8 +24,9 @@ signals:
 ```
 
 - `name` identifies the engine.
-- `signals` maps contract signal names to the engine's native metric names, as exposed on the engine's
-  `/metrics` endpoint.
+- `signals` maps contract signal names to PromQL instant-vector selectors, e.g. `engine:requests{state="running"}`.
+  Gauge mappings also accept expressions such as `sum by (model_name) (engine:requests)` or `engine:total - engine:waiting`.
+  Queries use the current scrape only; no historical samples are retained. Histogram selectors preserve the native buckets, count, and sum.
 - Every key must be a signal defined in the contract; unknown fields are rejected.
 - The native metric must have the same instrument type as the contract signal (for example, a histogram for
   `gen_ai.server.request.duration`); otherwise the metrics-exporter reports a mismatch and does not emit that signal.
