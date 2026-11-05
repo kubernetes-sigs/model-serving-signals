@@ -1,0 +1,7 @@
+# SMG 1.13.0.post20261027, gateway --prometheus-port. TTFT/TPOT require streaming.
+# The generation timer includes the response body; the request timer stops at headers.
+name: tokenspeed-smg
+signals:
+  gen_ai.server.request.duration: smg_router_generation_duration_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: smg_router_time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.time_per_output_token: smg_router_request_time_per_output_token_seconds # histogram, seconds

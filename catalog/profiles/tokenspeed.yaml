@@ -1,0 +1,10 @@
+# TokenSpeed nightly-621b53, engine --metrics-port.
+# Native histograms are absent in 0.1.1.post20261102; use tokenspeed-smg.yaml for latency.
+# TPOT excludes queueing/TTFT; native running includes waiting requests.
+name: tokenspeed
+signals:
+  gen_ai.server.request.duration: tokenspeed:e2e_request_latency_seconds # histogram, seconds
+  gen_ai.server.time_to_first_token: tokenspeed:time_to_first_token_seconds # histogram, seconds
+  gen_ai.server.time_per_output_token: tokenspeed:decode_time_per_output_token_seconds # histogram, seconds
+  gen_ai.server.request.queued: tokenspeed:num_requests_waiting # gauge
+  gen_ai.server.request.running: tokenspeed:num_requests_running - tokenspeed:num_requests_waiting # gauge
