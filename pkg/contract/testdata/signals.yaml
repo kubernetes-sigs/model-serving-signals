@@ -1,0 +1,28 @@
+- description: '[ALPHA] Generative AI server request duration such as time-to-last
+    byte or last output token.'
+  name: gen_ai.server.request.duration
+  prometheusName: gen_ai_server_request_duration_seconds
+  type: histogram
+  unit: s
+- description: '[ALPHA] Number of requests admitted by the server but not yet scheduled
+    into a batch.'
+  name: gen_ai.server.request.queued
+  prometheusName: gen_ai_server_request_queued
+  type: gauge
+  unit: '{request}'
+- description: '[ALPHA] Number of requests executing forward passes.'
+  name: gen_ai.server.request.running
+  prometheusName: gen_ai_server_request_running
+  type: gauge
+  unit: '{request}'
+- description: '[ALPHA] Time per output token generated after the first token for
+    successful responses.'
+  name: gen_ai.server.time_per_output_token
+  prometheusName: gen_ai_server_time_per_output_token_seconds
+  type: histogram
+  unit: s
+- description: '[ALPHA] Time to generate first token for successful responses.'
+  name: gen_ai.server.time_to_first_token
+  prometheusName: gen_ai_server_time_to_first_token_seconds
+  type: histogram
+  unit: s
