@@ -17,7 +17,7 @@ limitations under the License.
 // Package translator converts an engine's native metrics into contract signals.
 //
 // The Collector scrapes the engine on every Prometheus collection, looks up each contract signal's
-// native metric in the engine profile, and re-emits that metric family under the contract name. The
+// PromQL mapping in the engine profile, and emits its result under the contract name. A selected
 // native metric must have the same instrument type as the contract signal; the converter for each
 // signal type is chosen by converterFor. Supporting a new engine means adding a profile, not code.
 package translator
@@ -33,6 +33,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/otlptranslator"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"sigs.k8s.io/model-serving-signals/pkg/contract"
 	"sigs.k8s.io/model-serving-signals/pkg/profile"
@@ -54,9 +56,10 @@ func converterFor(signal *contract.Signal) (converter, error) {
 
 // mapping binds a contract signal to the engine's native metric that provides it.
 type mapping struct {
-	signal  *contract.Signal
-	native  string
-	convert converter
+	signal   *contract.Signal
+	native   string
+	convert  converter
+	selector *parser.VectorSelector
 }
 
 // Collector is a prometheus.Collector that exposes an engine's metrics as contract signals.
@@ -68,6 +71,7 @@ type Collector struct {
 	mappings []mapping
 	timeout  time.Duration
 	logger   logr.Logger
+	engine   *promql.Engine
 }
 
 var _ prometheus.Collector = (*Collector)(nil)
@@ -93,12 +97,19 @@ func New(ctx context.Context, scraper Scraper, engineProfile *profile.Profile, t
 			c.logger.V(1).Info("Engine does not provide contract signal", "engine", engineProfile.Name, "signal", signal.Name)
 			continue
 		}
-		convert, err := converterFor(signal)
+		m, err := newMapping(signal, native)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("profile '%s': %w", engineProfile.Name, err))
 			continue
 		}
-		c.mappings = append(c.mappings, mapping{signal: signal, native: native, convert: convert})
+		c.mappings = append(c.mappings, m)
+		if m.selector == nil && c.engine == nil {
+			c.engine = promql.NewEngine(promql.EngineOpts{
+				MaxSamples: 1_000_000, Timeout: timeout,
+				EnableAtModifier: true, EnableNegativeOffset: true,
+				NoStepSubqueryIntervalFn: func(int64) int64 { return time.Minute.Milliseconds() },
+			})
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
@@ -120,14 +131,22 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		c.logger.Error(err, "Failed to scrape engine metrics")
 		return
 	}
-	for _, m := range c.mappings {
-		family, ok := families[m.native]
-		if !ok {
-			// Engines register some metrics lazily (e.g. after the first request), so this is expected early on.
-			c.logger.V(1).Info("Native metric not present in scrape", "signal", m.signal.Name, "native", m.native)
-			continue
+	now := time.Now()
+	var snapshot *scrapeSnapshot
+	if c.engine != nil {
+		snapshot, err = newScrapeSnapshot(families, now)
+		if err != nil {
+			c.logger.Error(err, "Failed to prepare PromQL samples")
+			return
 		}
-		metrics, err := m.convert(m.signal, family)
+	}
+	for _, m := range c.mappings {
+		var metrics []prometheus.Metric
+		if m.selector != nil {
+			metrics, err = m.selectMetrics(families)
+		} else {
+			metrics, err = m.evaluate(ctx, c.engine, snapshot, now)
+		}
 		if err != nil {
 			c.logger.Error(err, "Failed to convert native metric", "signal", m.signal.Name, "native", m.native)
 			continue

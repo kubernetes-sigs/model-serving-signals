@@ -31,13 +31,12 @@ import (
 type Profile struct {
 	// Name identifies the engine, e.g. "vllm".
 	Name string `json:"name"`
-	// Signals is keyed by contract signal name; each value is the name of the engine's native metric that
-	// provides it. The native metric must have the same instrument type as the contract signal.
+	// Signals maps contract signal names to PromQL selectors or instant-vector expressions.
+	// Histogram signals select native histogram families to preserve their buckets.
 	Signals map[string]string `json:"signals"`
 }
 
-// Metric returns the engine's native metric that provides the given contract signal, and whether the
-// engine provides it at all.
+// Metric returns the PromQL mapping for a contract signal, and whether the engine provides it.
 func (p *Profile) Metric(signal *contract.Signal) (string, bool) {
 	m, ok := p.Signals[signal.Name]
 	return m, ok
