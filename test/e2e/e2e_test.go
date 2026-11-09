@@ -14,21 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package e2e verifies the metrics exporter end to end against a simulated
-// inference engine. The cluster lifecycle (kind, deploy, port-forward) is owned
-// by hack/test-e2e.sh; this test assumes the simulator's native metrics endpoint,
-// the exporter's contract endpoint, and the simulator's inference API are already
-// reachable (typically via port-forward to localhost) and provided through the
-// environment.
+// Package e2e verifies the metrics exporter end to end against simulated
+// inference engines. hack/test-e2e.sh creates a kind cluster and loads the
+// images; this test does the rest. For each engine in E2E_ENGINES it deploys the
+// Dynamo mocker + exporter pod, port-forwards it, drives inference load, and
+// checks every contract signal against the native metric that feeds it.
 //
-// The test drives its own inference load so it controls timing: it first lets a
-// batch of requests complete (populating histograms), then holds one request
-// in-flight so num_requests_running is non-zero while both endpoints are scraped.
-// This gives the gauge assertions real teeth rather than comparing 0 to 0.
+// The test controls timing: it first lets a batch of requests complete
+// (populating histograms), then holds one request in-flight so the running
+// gauge is non-zero while both endpoints are scraped.
 //
 // The test is engine-agnostic: the engine profile is the only source of truth
 // for which native metric maps to which contract signal, so adding an engine
-// means adding a profile and a deployment, not changing this code.
+// means adding a profile, not changing this code.
 package e2e
 
 import (
@@ -37,10 +35,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -55,74 +51,93 @@ import (
 	"sigs.k8s.io/model-serving-signals/pkg/translator"
 )
 
-// These match the local kind + port-forward setup in hack/test-e2e.sh and the
-// values baked into test/e2e/manifests/vllm.yaml. They are constants, not env
-// knobs, because nothing varies them across runs. Only the profile path is
-// configurable, so a new engine can point the test at its own mapping oracle.
 const (
-	model         = "Qwen/Qwen2-0.5B"
-	engineHost    = "localhost"
-	enginePort    = 8000
-	exporterHost  = "localhost"
-	exporterPort  = 9464
-	metricsPath   = "/metrics"
-	warmupCount   = 5
-	scrapeTimeout = 5 * time.Second
+	// go test runs in the package directory.
+	profilesDir    = "../../catalog/profiles"
+	defaultEngines = "vllm sglang trt-llm"
+	forwardHost    = "127.0.0.1"
+	metricsPath    = "/metrics"
+	warmupCount    = 5
+	scrapeTimeout  = 5 * time.Second
 )
 
-// defaultProfilePath resolves the vLLM profile relative to this test file, so
-// the default works regardless of the working directory `go test` runs from
-// (it chdirs to the package directory).
-func defaultProfilePath() string {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "catalog/profiles/vllm.yaml"
-	}
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "catalog", "profiles", "vllm.yaml")
+// endpoints are the forwarded local addresses of one engine's pod.
+type endpoints struct {
+	inference, engineMetrics, exporter int
 }
 
-func profilePath() string {
-	if v := os.Getenv("E2E_PROFILE_PATH"); v != "" {
-		return v
-	}
-	return defaultProfilePath()
+func (e endpoints) inferenceURL(path string) string {
+	return fmt.Sprintf("http://%s:%d%s", forwardHost, e.inference, path)
 }
 
-// TestExporterMatchesEngine proves the full scrape -> map -> emit path: for every
-// signal the profile declares, the exporter's contract metric must exactly match
-// the engine's native metric that feeds it, including its label set.
+func (e endpoints) engineMetricsURL() string {
+	return fmt.Sprintf("http://%s:%d%s", forwardHost, e.engineMetrics, metricsPath)
+}
+
+func (e endpoints) exporterMetricsURL() string {
+	return fmt.Sprintf("http://%s:%d%s", forwardHost, e.exporter, metricsPath)
+}
+
+// TestExporterMatchesEngine runs the check once per engine. Engines run one at
+// a time because they share the pod name and the cluster.
 func TestExporterMatchesEngine(t *testing.T) {
-	path := profilePath()
-	prof, err := profile.New(path)
-	if err != nil {
-		t.Fatalf("load profile %q: %v", path, err)
+	c := newCluster(t)
+	engines := os.Getenv("E2E_ENGINES")
+	if engines == "" {
+		engines = defaultEngines
 	}
+	for _, engine := range strings.Fields(engines) {
+		t.Run(engine, func(t *testing.T) {
+			prof, err := profile.New(filepath.Join(profilesDir, engine+".yaml"))
+			if err != nil {
+				t.Fatalf("load profile: %v", err)
+			}
+			pod := renderPod(t, engine)
+			c.deploy(t, pod)
+
+			ports := []int32{
+				containerPort(t, pod, inferencePortName),
+				containerPort(t, pod, engineMetricsPortName),
+				containerPort(t, pod, exporterPortName),
+			}
+			local := c.forward(t, pod.Name, ports...)
+			ep := endpoints{inference: local[ports[0]], engineMetrics: local[ports[1]], exporter: local[ports[2]]}
+
+			model := servedModel(t, pod)
+			waitServable(t, ep, model)
+			checkExporter(t, prof, ep, model)
+		})
+	}
+}
+
+// checkExporter proves the full scrape -> map -> emit path: for every signal
+// the profile declares, the exporter's contract metric must exactly match the
+// engine's native metric that feeds it, including its label set.
+func checkExporter(t *testing.T, prof *profile.Profile, ep endpoints, model string) {
+	t.Helper()
 	if len(prof.Signals) == 0 {
 		t.Fatal("profile declares no signals")
 	}
-
-	engineScraper := translator.NewHTTPScraper(engineHost, enginePort, metricsPath)
-	exporterScraper := translator.NewHTTPScraper(exporterHost, exporterPort, metricsPath)
-	completionsURL := (&url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", engineHost, enginePort), Path: "/v1/completions"}).String()
+	engineScraper := translator.NewHTTPScraper(forwardHost, ep.engineMetrics, metricsPath)
+	exporterScraper := translator.NewHTTPScraper(forwardHost, ep.exporter, metricsPath)
+	completionsURL := ep.inferenceURL("/v1/completions")
 
 	// Phase 1: let a batch of requests complete so histograms are populated.
 	for i := 0; i < warmupCount; i++ {
-		if err := infer(context.Background(), completionsURL, model, 16); err != nil {
+		if err := infer(t.Context(), completionsURL, model, 16); err != nil {
 			t.Fatalf("warmup inference request: %v", err)
 		}
 	}
 
-	// Phase 2: hold one request in-flight so num_requests_running > 0, then scrape
-	// both endpoints as close together as possible. A wide gap, or scraping while
-	// idle, would make the gauge comparison meaningless.
+	// Phase 2: hold one request in-flight so the running gauge is > 0, then
+	// scrape both endpoints as close together as possible.
 	var wg sync.WaitGroup
 	wg.Add(1)
-	inflightCtx, cancelInflight := context.WithCancel(context.Background())
+	inflightCtx, cancelInflight := context.WithCancel(t.Context())
 	defer func() { cancelInflight(); wg.Wait() }()
 	go func() {
 		defer wg.Done()
-		// A large max_tokens combined with the simulator's inter-token latency keeps
-		// this request running long enough to be observed.
+		// The mocker's slowed decode keeps this request running long enough to observe.
 		_ = infer(inflightCtx, completionsURL, model, 256)
 	}()
 
@@ -133,7 +148,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 	}
 	waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
 
-	ctx, cancel := context.WithTimeout(context.Background(), scrapeTimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), scrapeTimeout)
 	defer cancel()
 	native, err := engineScraper.Scrape(ctx)
 	if err != nil {
@@ -161,8 +176,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 			if !ok {
 				t.Fatalf("exporter did not emit contract metric %q", contractName)
 			}
-			compareFamily(t, signal, nativeFam, contractFam)
-			compareLabels(t, nativeFam, contractFam)
+			compareFamilies(t, signal, nativeFam, contractFam)
 		})
 	}
 }
@@ -186,7 +200,7 @@ func waitForRunning(t *testing.T, scraper translator.Scraper, nativeName string,
 	t.Fatalf("timed out waiting for %q > 0; no request stayed in-flight", nativeName)
 }
 
-// infer sends a single completion request to the simulator.
+// infer sends a single completion request to the frontend.
 func infer(ctx context.Context, completionsURL, model string, maxTokens int) error {
 	body, _ := json.Marshal(map[string]any{
 		"model":      model,
@@ -209,53 +223,65 @@ func infer(ctx context.Context, completionsURL, model string, maxTokens int) err
 	return nil
 }
 
-// compareFamily asserts the emitted contract family equals the native family,
+// compareFamilies asserts the emitted contract family carries exactly the
+// native family's series, matched by label set, with identical values. The
+// exporter carries native labels over unchanged, so every native series must
+// have a counterpart. Engines may split one metric into several series (for
+// example SGLang's is_streaming label), so series are compared one by one
+// rather than assuming a single series per family.
+func compareFamilies(t *testing.T, signal *contract.Signal, native, emitted *dto.MetricFamily) {
+	t.Helper()
+	n, e := seriesByLabels(native), seriesByLabels(emitted)
+	if !assert.ElementsMatch(t, sortedKeys(n), sortedKeys(e), "label sets differ between native and exporter") {
+		return
+	}
+	for key, nm := range n {
+		compareSeries(t, signal, key, nm, e[key])
+	}
+}
+
+// compareSeries asserts one emitted series equals its native counterpart,
 // dispatching on the contract signal's instrument type.
-func compareFamily(t *testing.T, signal *contract.Signal, native, emitted *dto.MetricFamily) {
+func compareSeries(t *testing.T, signal *contract.Signal, labels string, native, emitted *dto.Metric) {
 	t.Helper()
 	switch signal.MetricTypeName {
 	case "gauge":
-		assertEqual(t, "gauge value", gaugeTotal(native), gaugeTotal(emitted))
+		assertEqual(t, fmt.Sprintf("{%s} gauge value", labels), native.GetGauge().GetValue(), emitted.GetGauge().GetValue())
 	case "histogram":
-		n, e := histogram(t, native), histogram(t, emitted)
-		assertEqual(t, "histogram sample count", float64(n.GetSampleCount()), float64(e.GetSampleCount()))
-		assertEqual(t, "histogram sample sum", n.GetSampleSum(), e.GetSampleSum())
-		assertBuckets(t, n, e)
+		n, e := native.GetHistogram(), emitted.GetHistogram()
+		if n == nil || e == nil {
+			t.Fatalf("{%s} is not a histogram on both sides", labels)
+		}
+		assertEqual(t, fmt.Sprintf("{%s} histogram sample count", labels), float64(n.GetSampleCount()), float64(e.GetSampleCount()))
+		assertEqual(t, fmt.Sprintf("{%s} histogram sample sum", labels), n.GetSampleSum(), e.GetSampleSum())
+		assertBuckets(t, labels, n, e)
 	default:
 		t.Fatalf("unsupported contract instrument type %q for signal %q", signal.MetricTypeName, signal.Name)
 	}
 }
 
-// compareLabels asserts the exporter preserved the native label sets. The
-// exporter carries native labels over unchanged, so the set of per-series label
-// maps must be identical between the two families.
-func compareLabels(t *testing.T, native, emitted *dto.MetricFamily) {
-	t.Helper()
-	n, e := labelSets(native), labelSets(emitted)
-	if len(n) != len(e) {
-		t.Fatalf("series count mismatch: native %d, emitted %d", len(n), len(e))
-	}
-	for i := range n {
-		if n[i] != e[i] {
-			t.Errorf("label set mismatch at series %d: native %q, emitted %q", i, n[i], e[i])
-		}
-	}
-}
-
-// labelSets returns a sorted, stringified label set per series so two families
-// can be compared regardless of series order.
-func labelSets(fam *dto.MetricFamily) []string {
-	sets := make([]string, 0, len(fam.GetMetric()))
+// seriesByLabels indexes a family's series by a sorted, stringified label set
+// so two families can be compared regardless of series order.
+func seriesByLabels(fam *dto.MetricFamily) map[string]*dto.Metric {
+	series := make(map[string]*dto.Metric, len(fam.GetMetric()))
 	for _, m := range fam.GetMetric() {
 		pairs := make([]string, 0, len(m.GetLabel()))
 		for _, l := range m.GetLabel() {
 			pairs = append(pairs, l.GetName()+"="+l.GetValue())
 		}
 		sort.Strings(pairs)
-		sets = append(sets, strings.Join(pairs, ","))
+		series[strings.Join(pairs, ",")] = m
 	}
-	sort.Strings(sets)
-	return sets
+	return series
+}
+
+func sortedKeys(m map[string]*dto.Metric) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // gaugeTotal sums the gauge value across all series in a family.
@@ -267,35 +293,20 @@ func gaugeTotal(fam *dto.MetricFamily) float64 {
 	return total
 }
 
-// histogram returns the single histogram series from a family, failing if the
-// family is not a single-series histogram.
-func histogram(t *testing.T, fam *dto.MetricFamily) *dto.Histogram {
-	t.Helper()
-	metrics := fam.GetMetric()
-	if len(metrics) != 1 {
-		t.Fatalf("expected exactly one series for %q, got %d", fam.GetName(), len(metrics))
-	}
-	h := metrics[0].GetHistogram()
-	if h == nil {
-		t.Fatalf("%q is not a histogram", fam.GetName())
-	}
-	return h
-}
-
 // assertBuckets checks the two histograms have identical cumulative buckets.
-func assertBuckets(t *testing.T, native, emitted *dto.Histogram) {
+func assertBuckets(t *testing.T, labels string, native, emitted *dto.Histogram) {
 	t.Helper()
 	nb, eb := native.GetBucket(), emitted.GetBucket()
 	if len(nb) != len(eb) {
-		t.Fatalf("bucket count mismatch: native %d, emitted %d", len(nb), len(eb))
+		t.Fatalf("{%s} bucket count mismatch: native %d, emitted %d", labels, len(nb), len(eb))
 	}
 	for i := range nb {
 		boundary := nb[i].GetUpperBound()
 		if eb[i].GetUpperBound() != boundary {
-			t.Errorf("bucket %d boundary mismatch: native le=%g, emitted le=%g", i, boundary, eb[i].GetUpperBound())
+			t.Errorf("{%s} bucket %d boundary mismatch: native le=%g, emitted le=%g", labels, i, boundary, eb[i].GetUpperBound())
 			continue
 		}
-		assertEqual(t, fmt.Sprintf("bucket le=%g cumulative count", boundary),
+		assertEqual(t, fmt.Sprintf("{%s} bucket le=%g cumulative count", labels, boundary),
 			float64(nb[i].GetCumulativeCount()), float64(eb[i].GetCumulativeCount()))
 	}
 }

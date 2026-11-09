@@ -1,53 +1,60 @@
 # End-to-end tests
 
-These tests verify the metrics exporter against a simulated inference engine
-running on CPU, so they need no GPU and can run in presubmit CI.
+CPU-only tests that verify the exporter against simulated vLLM, SGLang and
+TensorRT-LLM engines. No GPU needed, so they run in presubmit CI.
 
 ## What is tested
 
-The exporter has no engine-specific code: it scrapes an engine's native
-`/metrics`, maps it through an engine profile, and re-emits the mapped
-contract metrics. The e2e test proves that whole path end to end:
+For each engine, the test sends inference requests, then checks that every
+contract metric the exporter emits exactly matches the native metric it maps
+from, series by series:
 
 ```
-simulator /metrics (native) --scrape--> profile mapping --> exporter /metrics (contract)
+mocker /metrics (native) --scrape--> profile mapping --> exporter /metrics (contract)
 ```
 
-For every signal the profile declares, the test asserts the exporter's
-contract metric exactly matches the simulator's native metric that feeds it
-(value for gauges; sample count, sum, and every cumulative bucket for
-histograms).
+## Setup
 
-Because the exporter path is identical for every engine, verifying it once
-against a single simulator verifies the code for all engines. A second engine
-would differ only in its profile (data), not in the code under test.
+One pod template ([`manifests/dynamo-mocker.yaml`](manifests/dynamo-mocker.yaml))
+serves every engine:
 
-## Running locally
+| Container | Role | Port |
+| --- | --- | --- |
+| `frontend` | Dynamo OpenAI-compatible frontend (inference) | 8000 |
+| `engine` | [Dynamo mocker](https://docs.nvidia.com/dynamo/knowledge-base/concepts/simulation/kubernetes-mocker), emits engine-native metrics per `--engine-type` | 8081 |
+| `exporter` | exporter under test | 9464 |
+
+The image is a pinned `dynamo-planner-nightly` tag, because no stable release
+includes [ai-dynamo/dynamo#17200](https://github.com/ai-dynamo/dynamo/pull/17200)
+yet. That PR aligns the mocker's metrics with the real engines.
+
+## Running
 
 ```sh
 make test-e2e
 ```
 
-Requires `docker`, `kind`, `kubectl`, and `go`. The harness
-(`hack/test-e2e.sh`) recreates a dedicated kind cluster
-(`model-serving-signals-e2e`) on every run, builds and loads the exporter
-image, deploys the simulator + exporter pod, drives inference requests, runs
-the Go assertions, and tears everything down.
+Requires `docker`, `kind`, `kubectl`, `go`, and network access (Dynamo image,
+Hugging Face tokenizer). `hack/test-e2e.sh` creates a dedicated kind cluster and
+loads the images; the Go test deploys, port-forwards, checks and deletes the pod
+for each engine. The cluster is deleted at the end.
 
-Useful environment variables:
+To rerun only the Go test against a kept cluster:
+
+```sh
+E2E_KEEP_CLUSTER=true make test-e2e
+E2E_KUBE_CONTEXT=kind-model-serving-signals-e2e go test -v ./test/e2e/...
+```
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `E2E_ENGINES` | `vllm sglang trt-llm` | engines to test |
 | `E2E_KEEP_CLUSTER` | unset | keep the cluster after the run |
-| `E2E_PROFILE_PATH` | `catalog/profiles/vllm.yaml` | profile used as the mapping oracle |
+| `E2E_KUBE_CONTEXT` | set by the harness | kube context the Go test uses; the test skips when unset |
 
 ## Adding an engine
 
-The Go test (`e2e_test.go`) is engine-agnostic and does not need to change.
-Adding an engine is a data change, and only makes sense once a CPU-only
-simulator that emits the engine's native metrics exists:
-
-1. Add the engine profile under `catalog/profiles/<engine>.yaml`.
-2. Add a pod manifest under `test/e2e/manifests/<engine>.yaml` with the
-   simulator and the exporter sidecar (see `vllm.yaml`).
-3. Point the test at the profile via `E2E_PROFILE_PATH`.
+1. Add `catalog/profiles/<engine>.yaml`.
+2. Map it to the mocker's `--engine-type` in `mockerEngineTypes` in
+   `cluster_test.go`.
+3. Add it to `defaultEngines` in `e2e_test.go`.
