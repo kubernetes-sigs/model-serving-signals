@@ -13,9 +13,6 @@ This document describes how to release model-serving-signals. A release consists
 - [Build and publish the container image](#build-and-publish-the-container-image)
 - [Create the GitHub release](#create-the-github-release)
 - [Announce and finish the release](#announce-and-finish-the-release)
-- [Rollback and patch releases](#rollback-and-patch-releases)
-  - [Before promotion](#before-promotion)
-  - [After a tag or image is published](#after-a-tag-or-image-is-published)
 <!-- /toc -->
 
 ## Release policy
@@ -28,7 +25,7 @@ Releases are made when the maintainers agree that the changes on `main` form a c
 - Increment `PATCH` for backwards-compatible fixes.
 - Release candidates use `vMAJOR.MINOR.PATCH-rc.N`.
 
-The repository currently has a `v0.0.0` tag. Until the project reaches `v1.0.0`, treat changes to the signal contract as potentially breaking. The existing tag is lightweight, and its GitHub release is marked as a prerelease with generated release notes; this does not establish a requirement for signed tags or a stable-release policy.
+The repository currently has a `v0.0.0` tag. The existing tag is lightweight, and its GitHub release is marked as a prerelease with generated release notes. Future release tags must be signed.
 
 ## Prerequisites
 
@@ -39,7 +36,7 @@ The release manager should:
 3. Have permission to create GitHub releases.
 4. Have access to the Kubernetes staging-image publishing and promotion process. The image is staged in the [`k8s-staging-images` Artifact Registry](https://console.cloud.google.com/artifacts/docker/k8s-staging-images/us-central1/model-serving-signals) and is promoted separately to `registry.k8s.io`.
 5. Have `git`, Go, Docker with Buildx, and the tools required by the e2e test: `kind`, `kubectl`, and `curl`.
-6. If signed tags are required by project policy, have a signing key registered with GitHub.
+6. Have a signing key registered with GitHub and configured for signed tags.
 
 Before starting, open a release issue using [`.github/ISSUE_TEMPLATE/new-release.md`](.github/ISSUE_TEMPLATE/new-release.md) and record the proposed version, release manager, and previous release.
 
@@ -109,18 +106,15 @@ Complete the release issue checklist and ensure that:
 
 ## Create the release tag
 
-After the checks pass, record the release commit and create an annotated tag:
+After the checks pass, record the release commit and create a signed, annotated tag:
 
 ```shell
 git status --short
 git rev-parse HEAD
-git tag -a ${VERSION} -m "Release ${VERSION}"
+git tag -s ${VERSION} -m "Release ${VERSION}"
+git tag -v ${VERSION}
 git push ${REMOTE} ${VERSION}
 ```
-
-If signed tags are required, use `git tag -s` instead of `git tag -a` and verify the signature with `git tag -v ${VERSION}` before pushing.
-
-Do not move or reuse a published tag. If the tag points at the wrong commit, follow the rollback procedure below and use a new patch version.
 
 ## Build and publish the container image
 
@@ -173,26 +167,8 @@ The repository currently contains no standalone binaries, Helm charts, or genera
 
 After publishing the GitHub release:
 
-1. Announce the release in the channels and mailing lists confirmed by maintainers. Include links to the GitHub release and documentation, plus the promoted image reference.
-2. Update the release issue with the GitHub release URL, image digest, and announcement URL.
+1. If maintainers request an announcement in an approved project channel, include links to the GitHub release and documentation, plus the promoted image reference.
+2. Update the release issue with the GitHub release URL, image digest, and project-channel announcement URL, if an announcement was requested.
 3. Update examples or documentation on `main` if they still refer to the previous release or an incorrect image.
 4. For a new minor line, ensure `main` continues to use the `:main` staging image and that the next development work is not accidentally committed to the release branch.
 5. Close the release issue only after the public image, GitHub release, and announcement are complete.
-
-## Rollback and patch releases
-
-### Before promotion
-
-If CI or staging validation fails, do not publish the GitHub release. Fix the release branch, rerun the pre-release checks, and create a new tag only after the corrected commit is ready. Sign it if required by project policy.
-
-### After a tag or image is published
-
-If maintainers confirm that published tags and image tags are immutable, do not force-push, retag a different commit, or silently replace an image digest. Instead:
-
-1. Mark the GitHub release as a draft or clearly document that it is withdrawn.
-2. Notify maintainers and update the release issue with the failure and affected digest.
-3. Stop or correct promotion of the affected staging image if it has not reached the public registry.
-4. Prepare the fix on the release branch.
-5. Cut the next patch version, such as `v0.1.1`, and repeat the complete validation, publication, and announcement process.
-
-For a security incident, also follow [`SECURITY.md`](SECURITY.md) and use the private Kubernetes security reporting process.

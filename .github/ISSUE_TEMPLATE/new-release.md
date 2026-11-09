@@ -6,8 +6,7 @@ labels: ""
 assignees: ""
 ---
 
-<!-- Update the version, branch, and previous release before requesting review.
-Confirm any local policy choices, such as signed tags and announcements. -->
+<!-- Update the version, branch, and previous release before requesting review. -->
 
 ## Contents
 
@@ -51,7 +50,7 @@ This issue tracks a model-serving-signals release using the procedure in
 ### Tag and artifacts
 
 - [ ] The release branch is pushed and up to date.
-- [ ] The tag was created and verified; it is signed if required by project policy.
+- [ ] A signed tag was created and verified.
 - [ ] The model-serving-signals Prow image-pushing job succeeded for this release tag.
 - [ ] The multi-architecture staging image was published.
 - [ ] The staging image digest was recorded.
@@ -64,7 +63,7 @@ This issue tracks a model-serving-signals release using the procedure in
 
 - [ ] The GitHub release was created with reviewed release notes.
 - [ ] The image reference and digest were included in the release notes.
-- [ ] The release announcement was sent.
+- [ ] Any requested project-channel announcement was sent; no mailing-list announcement is required.
 - [ ] Main-branch documentation was updated if needed.
 - [ ] This issue was updated with the release, image, and announcement links.
 - [ ] This issue was closed after all release steps completed.
@@ -75,4 +74,4 @@ This issue tracks a model-serving-signals release using the procedure in
 - Staging image:
 - Public image:
 - Image digest:
-- Announcement:
+- Project-channel announcement, if requested:
