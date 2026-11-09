@@ -72,7 +72,7 @@ git switch ${RELEASE_BRANCH}
 git pull --ff-only ${REMOTE} ${RELEASE_BRANCH}
 ```
 
-Do not release from a dirty working tree. Release-specific fixes should be reviewed and merged into the release branch before continuing.
+Release-specific fixes should be reviewed and merged into the release branch before continuing.
 
 ## Pre-release checks
 
@@ -101,6 +101,18 @@ Complete the release issue checklist and ensure that:
   ```
 
   This test requires Docker, kind, kubectl, Go, and curl and recreates a disposable cluster.
+- Optionally, run the real-GPU validation test suite before a release if you have access to a GPU Kubernetes cluster:
+
+  ```shell
+  E2E_GPU_EXPORTER_IMAGE=<exporter-image> make test-e2e-gpu
+  ```
+
+  The exporter image must already be pushed to a registry that the cluster can
+  access. This manual check deploys the real-vLLM example from
+  [`examples/vllm/`](examples/vllm/) with the exporter sidecar and compares the
+  engine's native metrics with the exported contract metrics. It is not a Prow
+  job or a required PR check, and its result does not need to be recorded in
+  the release issue.
 - The release image name and tag are correct, and the image will contain the intended catalog profiles.
 - Any release-specific documentation uses the released image rather than the `:main` staging image where appropriate.
 
