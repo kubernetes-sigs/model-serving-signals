@@ -99,10 +99,6 @@ update-contract-golden: ## Regenerate the contract signals golden file.
 test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
 	PATH="$(LOCALBIN):$$PATH" ./hack/test-e2e.sh
 
-.PHONY: test-e2e-gpu
-test-e2e-gpu: ## Run optional real-vLLM validation in an existing GPU cluster.
-	./hack/test-e2e-gpu.sh
-
 .PHONY: image-build
 image-build: ## Build the multi-arch image for PLATFORMS with buildx (add PUSH=--push to push).
 	$(IMAGE_BUILD_CMD) -t $(IMAGE) \

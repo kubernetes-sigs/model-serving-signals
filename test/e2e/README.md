@@ -40,29 +40,6 @@ Useful environment variables:
 | --- | --- | --- |
 | `E2E_KEEP_CLUSTER` | unset | keep the cluster after the run |
 | `E2E_PROFILE_PATH` | `catalog/profiles/vllm.yaml` | profile used as the mapping oracle |
-| `E2E_MODEL` | `Qwen/Qwen2-0.5B` | model name sent to the inference API |
-
-## Optional real-GPU validation
-
-The repository also includes an optional manual validation workflow for users
-who have access to a GPU Kubernetes cluster. It uses the real-vLLM deployment
-in [`examples/vllm/deployment.yaml`](../../examples/vllm/deployment.yaml), so it
-also verifies that the example continues to work.
-
-The workflow is not a Prow job or a required PR check. It creates a temporary
-namespace in the current Kubernetes context, deploys the example, replaces the
-exporter image, runs the same metric comparison as the kind test, and deletes
-the namespace when it finishes.
-
-```sh
-E2E_GPU_EXPORTER_IMAGE=registry.example.com/model-serving-signals:pr-123 \
-  make test-e2e-gpu
-```
-
-The image must already be pushed to a registry reachable by the cluster. The
-default image is the staging `:main` image. Set `E2E_GPU_NAMESPACE` to choose a
-different temporary namespace. The test uses the example's current vLLM image
-and `Qwen/Qwen2.5-0.5B-Instruct` model.
 
 ## Adding an engine
 
