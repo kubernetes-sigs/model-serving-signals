@@ -1,5 +1,4 @@
 # TokenSpeed nightly-621b53, engine --metrics-port.
-# Native histograms are absent in 0.1.1.post20261102; use tokenspeed-smg.yaml for latency.
 # TPOT excludes queueing/TTFT; native running includes waiting requests.
 name: tokenspeed
 signals:

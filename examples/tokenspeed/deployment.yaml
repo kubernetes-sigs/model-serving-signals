@@ -1,6 +1,5 @@
 # TokenSpeed and SMG run as child processes in the same engine container.
 # One exporter sidecar provides all five signals from this image's engine endpoint.
-# Create the tokenspeed-profiles ConfigMap as described in README.md first.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,8 +8,6 @@ metadata:
     app: tokenspeed
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app: tokenspeed
@@ -19,8 +16,6 @@ spec:
       labels:
         app: tokenspeed
     spec:
-      nodeSelector:
-        kubernetes.io/arch: amd64
       volumes:
         - name: shm
           emptyDir:
@@ -28,9 +23,6 @@ spec:
             sizeLimit: 2Gi
         - name: model-cache
           emptyDir: {}
-        - name: profiles
-          configMap:
-            name: tokenspeed-profiles
       containers:
         - name: tokenspeed
           # Official nightly-621b53 image, pinned to its linux/amd64 manifest.
@@ -39,23 +31,9 @@ spec:
           args:
             - Qwen/Qwen3-0.6B
             - --served-model-name=mss-qwen3
-            - --host=0.0.0.0
-            - --port=8000
             - --enable-metrics
             - --metrics-host=127.0.0.1
             - --metrics-port=8001
-            - --prometheus-host=127.0.0.1
-            - --prometheus-port=8002
-            - --tensor-parallel-size=1
-            - --world-size=1
-            - --dtype=bfloat16
-            - --max-model-len=1024
-            - --max-num-seqs=1
-            - --gpu-memory-utilization=0.4
-            - --attention-backend=triton
-            - --sampling-backend=triton
-            - --enforce-eager
-            - --disable-prefill-graph
           env:
             - name: HF_HOME
               value: /model-cache
@@ -87,10 +65,11 @@ spec:
               mountPath: /dev/shm
             - name: model-cache
               mountPath: /model-cache
+        # CPU-only metrics sidecar; the inference container above requests the GPU.
         - name: metrics-exporter
           image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main
           args:
-            - --profile=/profiles/tokenspeed.yaml
+            - --profile=/catalog/profiles/tokenspeed.yaml
             - --engine-host=127.0.0.1
             - --engine-metrics-port=8001
             - --exporter-metrics-port=9464
@@ -109,7 +88,3 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
-          volumeMounts:
-            - name: profiles
-              mountPath: /profiles
-              readOnly: true
