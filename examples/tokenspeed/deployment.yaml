@@ -1,4 +1,4 @@
-# TokenSpeed and SMG run as child processes in the same engine container.
+# TokenSpeed model server with a metrics exporter sidecar.
 # One exporter sidecar provides all five signals from this image's engine endpoint.
 apiVersion: apps/v1
 kind: Deployment
@@ -32,6 +32,8 @@ spec:
             - Qwen/Qwen3-0.6B
             - --served-model-name=mss-qwen3
             - --enable-metrics
+            - --disable-kvstore
+            - --sampling-backend=triton
             - --metrics-host=127.0.0.1
             - --metrics-port=8001
           env:
@@ -40,12 +42,6 @@ spec:
           ports:
             - name: inference
               containerPort: 8000
-          startupProbe:
-            httpGet:
-              path: /health
-              port: inference
-            periodSeconds: 10
-            failureThreshold: 90
           readinessProbe:
             httpGet:
               path: /health
