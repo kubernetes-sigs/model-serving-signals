@@ -56,11 +56,11 @@ import (
 )
 
 // These match the local kind + port-forward setup in hack/test-e2e.sh and the
-// values baked into test/e2e/manifests/vllm.yaml. They are constants, not env
-// knobs, because nothing varies them across runs. Only the profile path is
-// configurable, so a new engine can point the test at its own mapping oracle.
+// values baked into test/e2e/manifests/vllm.yaml. The model can be overridden
+// for the real-vLLM validation, while the profile remains configurable so a
+// new engine can point the test at its own mapping oracle.
 const (
-	model         = "Qwen/Qwen2-0.5B"
+	defaultModel  = "Qwen/Qwen2-0.5B"
 	engineHost    = "localhost"
 	enginePort    = 8000
 	exporterHost  = "localhost"
@@ -69,6 +69,13 @@ const (
 	warmupCount   = 5
 	scrapeTimeout = 5 * time.Second
 )
+
+func inferenceModel() string {
+	if v := os.Getenv("E2E_MODEL"); v != "" {
+		return v
+	}
+	return defaultModel
+}
 
 // defaultProfilePath resolves the vLLM profile relative to this test file, so
 // the default works regardless of the working directory `go test` runs from
@@ -107,7 +114,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 
 	// Phase 1: let a batch of requests complete so histograms are populated.
 	for i := 0; i < warmupCount; i++ {
-		if err := infer(context.Background(), completionsURL, model, 16); err != nil {
+		if err := infer(context.Background(), completionsURL, inferenceModel(), 16); err != nil {
 			t.Fatalf("warmup inference request: %v", err)
 		}
 	}
@@ -123,7 +130,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 		defer wg.Done()
 		// A large max_tokens combined with the simulator's inter-token latency keeps
 		// this request running long enough to be observed.
-		_ = infer(inflightCtx, completionsURL, model, 256)
+		_ = infer(inflightCtx, completionsURL, inferenceModel(), 256)
 	}()
 
 	const runningSignal = "gen_ai.server.request.running"

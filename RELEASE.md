@@ -101,6 +101,21 @@ Complete the release issue checklist and ensure that:
   ```
 
   This test requires Docker, kind, kubectl, Go, and curl and recreates a disposable cluster.
+- Optionally, run the real-GPU validation test suite before a release if you have access to a GPU Kubernetes cluster:
+
+  ```shell
+  make test-e2e-gpu
+  ```
+
+  By default, the test uses the staging `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main` image and creates a temporary namespace named `mss-gpu-e2e-<Unix timestamp>`. To use a different image or namespace, set `E2E_GPU_EXPORTER_IMAGE` or `E2E_GPU_NAMESPACE`. The selected namespace must not already exist because the test creates it and deletes it when finished. The exporter image must already be pushed to a registry that the cluster can access.
+
+  ```shell
+  E2E_GPU_NAMESPACE=<temporary-namespace> \
+    E2E_GPU_EXPORTER_IMAGE=<exporter-image> \
+    make test-e2e-gpu
+  ```
+
+  This manual check deploys the real-vLLM example from [`examples/vllm/`](examples/vllm/) with the exporter sidecar and compares the engine's native metrics with the exported contract metrics. It is not a Prow job or a required PR check, and its result does not need to be recorded in the release issue.
 - The release image name and tag are correct, and the image will contain the intended catalog profiles.
 - Any release-specific documentation uses the released image rather than the `:main` staging image where appropriate.
 
