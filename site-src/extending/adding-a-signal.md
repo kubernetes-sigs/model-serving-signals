@@ -17,30 +17,30 @@ Adding a signal touches, at most, four places:
 
 Open [`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go).
 
+All signals are declared and registered in the `init()` function using `mustRegister`. There are two paths:
+
 **If OpenTelemetry already defines the metric** (check the
-[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/)), reuse the
-generated `genaiconv` type so the name, unit and description stay in sync with the spec:
+[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/)),
+reuse the generated `genaiconv` type so the name, unit and description stay in sync with the spec:
 
 ```go
-var TimeToFirstToken = fromSemconv(genaiconv.ServerTimeToFirstToken{}, otlptranslator.MetricTypeHistogram)
+mustRegister(newSignalFromGenAiInstrument(genaiconv.ServerTimeToFirstToken{}, otlptranslator.MetricTypeHistogram, metrics.ALPHA))
 ```
 
 **If OpenTelemetry does not define it yet**, declare it under the project-defined block following the same
 naming conventions, and say what it means:
 
 ```go
-var RequestQueued = Signal{
-    // Unit is a UCUM unit, e.g. "s", "By", "{token}". Leave it out when dimensionless.
-    Metric:      otlptranslator.Metric{Name: "gen_ai.server.request.queued", Type: otlptranslator.MetricTypeGauge},
-    Description: "Number of requests admitted by the server but not yet scheduled into a batch.",
-}
+mustRegister(newSignal("gen_ai.server.request.queued", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests admitted by the server but not yet scheduled into a batch.", metrics.ALPHA))
 ```
 
-Every new signal starts at `StabilityAlpha`. Promoting it to `StabilityBeta` or `StabilityStable` is a
-separate change, made once the signal is mapped and tested across engines.
+Every new signal starts at `metrics.ALPHA` (from `k8s.io/component-base/metrics`). Promoting it to
+`metrics.BETA` or `metrics.STABLE` is a separate change, made once the signal is mapped and tested
+across engines.
 
-Then **add it to `Signals`**, keyed by its name. That map is the contract: profile validation, the translator and
-the tests all go through it, so a signal not listed there does not exist.
+`mustRegister` adds the signal to the `Signals` map keyed by its name. That map is the contract:
+profile validation, the translator and the tests all go through it, so a signal not listed there does not
+exist.
 
 Run `go test ./pkg/contract/` and extend `TestPrometheusName` with the expected Prometheus name. The name is
 derived by `github.com/prometheus/otlptranslator` (dots become underscores, the unit becomes a suffix, counters
@@ -55,7 +55,7 @@ the signal's:
 ```yaml
 name: vllm
 signals:
-  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds
+  gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram, seconds
 ```
 
 Add a line for every engine that exposes an equivalent metric. If an engine does not provide the signal,
@@ -72,7 +72,7 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 1. Add a case to `converterFor` returning a function with the signature
 
    ```go
-   func(signal contract.Signal, family *dto.MetricFamily) ([]prometheus.Metric, error)
+   func(signal *contract.Signal, family *dto.MetricFamily) ([]prometheus.Metric, error)
    ```
 
    Use the helpers already there: `expectType` to check the native instrument type, and `perSample` to build
@@ -95,7 +95,7 @@ engine that provides it, matching the engine profiles; use `N/A` for engines tha
 
 ## Checklist
 
-- [ ] Signal declared in `pkg/contract/signals.go` with a stability level and added to `Signals`
+- [ ] Signal declared in `pkg/contract/signals.go` `init()` via `mustRegister(newSignalFromGenAiInstrument(...))` or `mustRegister(newSignal(...))` with a stability level
 - [ ] `TestPrometheusName` covers the new Prometheus name
 - [ ] Mapped in every `catalog/profiles/*.yaml` whose engine provides it
 - [ ] The translator re-emits the signal's instrument type, or a new converter was added with a test
