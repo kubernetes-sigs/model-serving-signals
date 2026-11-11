@@ -1,0 +1,26 @@
+# TokenSpeed on Kubernetes
+
+Runs the official `lightseekorg/tokenspeed:nightly-621b53` image, pinned by digest,
+with Qwen3-0.6B on one NVIDIA GPU (linux/amd64) and a metrics exporter sidecar.
+
+From the repository root, in your target namespace:
+
+```sh
+kubectl apply -f examples/tokenspeed/deployment.yaml
+kubectl apply -f examples/tokenspeed/service.yaml
+kubectl rollout status deployment/tokenspeed --timeout=15m
+kubectl port-forward service/tokenspeed 8000:8000 9464:9464
+```
+
+In another terminal:
+
+```sh
+curl -N http://localhost:8000/v1/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"mss-qwen3","prompt":"Count from 1 to 100:","stream":true,"max_tokens":64,"temperature":0}'
+curl -s http://localhost:9464/metrics
+```
+
+The exporter scrapes the engine on loopback port 8001. TPOT uses decode time after the first token.
+
+Clean up with `kubectl delete -f examples/tokenspeed/`.
