@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -69,6 +70,42 @@ func TestHTTPScrapeNon200(t *testing.T) {
 
 	if _, err := (&HTTPScraper{url: srv.URL}).Scrape(context.Background()); err == nil {
 		t.Fatal("expected an error for a non-200 response")
+	}
+}
+
+func TestHTTPScrapeParseErrorIsActionable(t *testing.T) {
+	// A Prometheus exposition where one line has an invalid metric name (a name cannot start
+	// with a digit). The parser reports "invalid metric name" (the symptom from #43), and the
+	// error must point at the offending line, not just "line N".
+	const bad = "# HELP vllm:num_requests_running running\n" +
+		"# TYPE vllm:num_requests_running gauge\n" +
+		"123bad{model_name=\"m\"} 5\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(bad))
+	}))
+	defer srv.Close()
+
+	url := srv.URL + "/metrics"
+	_, err := (&HTTPScraper{url: url}).Scrape(context.Background())
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	for _, want := range []string{url, "Content-Type", "invalid metric name", `line 3: "123bad{model_name=\"m\"} 5"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestOffendingLineKeepsCarriageReturn(t *testing.T) {
+	// CRLF line endings break the text parser, so the "\r" must stay visible in the quoted line.
+	body := []byte("# TYPE a gauge\r\na 1\r\n")
+	_, err := parse(strings.NewReader(string(body)))
+	if err == nil {
+		t.Fatal("expected a parse error for a CRLF body")
+	}
+	if got, want := offendingLine(err, body), `, line 1: "# TYPE a gauge\r"`; got != want {
+		t.Errorf("offendingLine = %q, want %q", got, want)
 	}
 }
 
