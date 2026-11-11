@@ -169,6 +169,5 @@ After publishing the GitHub release:
 
 1. If maintainers request an announcement in an approved project channel, include links to the GitHub release and documentation, plus the promoted image reference.
 2. Update the release issue with the GitHub release URL, image digest, and project-channel announcement URL, if an announcement was requested.
-3. Update examples or documentation on `main` if they still refer to the previous release or an incorrect image.
-4. For a new minor line, ensure `main` continues to use the `:main` staging image and that the next development work is not accidentally committed to the release branch.
-5. Close the release issue only after the public image, GitHub release, and announcement are complete.
+3. For a new minor line, ensure `main` continues to use the `:main` staging image and that the next development work is not accidentally committed to the release branch.
+4. Close the release issue only after the public image, GitHub release, and announcement are complete.
