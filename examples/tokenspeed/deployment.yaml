@@ -1,5 +1,4 @@
 # TokenSpeed model server with a metrics exporter sidecar.
-# One exporter sidecar provides all five signals from this image's engine endpoint.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

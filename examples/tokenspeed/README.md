@@ -1,7 +1,7 @@
 # TokenSpeed on Kubernetes
 
 Runs the official `lightseekorg/tokenspeed:nightly-621b53` image, pinned by digest,
-with Qwen3-0.6B on one NVIDIA GPU (linux/amd64). One exporter sidecar provides all five contract signals.
+with Qwen3-0.6B on one NVIDIA GPU (linux/amd64) and a metrics exporter sidecar.
 
 From the repository root, in your target namespace:
 
@@ -21,7 +21,6 @@ curl -N http://localhost:8000/v1/completions \
 curl -s http://localhost:9464/metrics
 ```
 
-The exporter scrapes the engine on loopback port 8001. Running requests are derived
-as `tokenspeed:num_requests_running - tokenspeed:num_requests_waiting`; TPOT uses decode time after the first token.
+The exporter scrapes the engine on loopback port 8001. TPOT uses decode time after the first token.
 
 Clean up with `kubectl delete -f examples/tokenspeed/`.
