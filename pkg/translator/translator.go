@@ -151,6 +151,10 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			c.logger.Error(err, "Failed to convert native metric", "signal", m.signal.Name, "native", m.native)
 			continue
 		}
+		if len(metrics) == 0 {
+			c.logger.V(1).Info("Mapping returned no metrics", "signal", m.signal.Name, "native", m.native)
+			continue
+		}
 		for _, metric := range metrics {
 			ch <- metric
 		}

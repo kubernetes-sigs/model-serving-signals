@@ -29,8 +29,8 @@ signals:
   Gauge mappings also accept expressions such as `sum by (model_name) (engine:requests)` or `engine:total - engine:waiting`.
   Queries use the current scrape only; no historical samples are retained. Histogram selectors preserve the native buckets, count, and sum.
 - Every key must be a signal defined in the contract; unknown fields are rejected.
-- The native metric must have the same instrument type as the contract signal (for example, a histogram for
-  `gen_ai.server.request.duration`); otherwise the metrics-exporter reports a mismatch and does not emit that signal.
+- Simple selectors require the native instrument type to match the contract signal; mismatches are reported and skipped.
+  Gauge expressions emit float results as gauges without checking the input instrument types.
 - A contract signal that is left out of `signals` is one the engine does not provide; metrics-exporter skips it.
 
 ## Using a profile

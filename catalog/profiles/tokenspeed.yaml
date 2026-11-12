@@ -6,3 +6,4 @@ signals:
   gen_ai.server.time_to_first_token: tokenspeed:time_to_first_token_seconds # histogram, seconds
   gen_ai.server.time_per_output_token: tokenspeed:decode_time_per_output_token_seconds # histogram, seconds
   gen_ai.server.request.queued: tokenspeed:num_requests_waiting # gauge
+  gen_ai.server.request.running: tokenspeed:num_requests_running - tokenspeed:num_requests_waiting # gauge

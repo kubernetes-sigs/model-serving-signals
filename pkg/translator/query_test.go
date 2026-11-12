@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-logr/logr/funcr"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -101,6 +102,11 @@ gen_ai_server_request_running{model="a",rank="1",state="running"} 2.5
 		{name: "no historical samples", expression: `rate(engine:requests[5m])`},
 		{name: "offset cannot reuse current samples", expression: `engine:requests offset 1m`},
 		{name: "query type mismatch", expression: `engine:counter`},
+		{
+			name:       "expression emits counter input as gauge",
+			expression: `sum(engine:counter)`,
+			samples:    "gen_ai_server_request_running 4\n",
+		},
 		{name: "runtime vector matching error", expression: `engine:requests / on(model) engine:requests`},
 	}
 	for _, test := range tests {
@@ -117,6 +123,73 @@ gen_ai_server_request_running{model="a",rank="1",state="running"} 2.5
 			require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader(want)))
 		})
 	}
+}
+
+func TestCollectRejectsDuplicateOutputLabels(t *testing.T) {
+	const exposition = `# TYPE engine:first gauge
+engine:first{model="a"} 3
+engine:first{model="b"} 4
+# TYPE engine:second gauge
+engine:second{model="a"} 2
+`
+	for _, expression := range []string{
+		`engine:first or on(__name__, model) engine:second`,
+		`{__name__=~"engine:(first|second)"}`,
+	} {
+		t.Run(expression, func(t *testing.T) {
+			var logs strings.Builder
+			logger := funcr.New(func(_, message string) { logs.WriteString(message) }, funcr.Options{})
+			prof := &profile.Profile{Name: queryEngineName, Signals: map[string]string{
+				queryRunningSignal:             expression,
+				"gen_ai.server.request.queued": "engine:second",
+			}}
+			c, err := New(context.Background(), fakeScraper{exposition: exposition}, prof, testScrapeTimeout, WithLogger(logger))
+			require.NoError(t, err)
+			// Reject the entire ambiguous mapping without breaking other signals.
+			want := `# HELP gen_ai_server_request_queued [ALPHA] Number of requests admitted by the server but not yet scheduled into a batch.
+# TYPE gen_ai_server_request_queued gauge
+gen_ai_server_request_queued{model="a"} 2
+`
+			require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader(want)))
+			require.Contains(t, logs.String(), "duplicate label set")
+			require.Contains(t, logs.String(), queryRunningSignal)
+		})
+	}
+}
+
+func TestCollectLogsEmptyMapping(t *testing.T) {
+	for _, expression := range []string{
+		`engine:requests{state="missing"}`,
+		`engine:missing - engine:capacity`,
+	} {
+		t.Run(expression, func(t *testing.T) {
+			var logs strings.Builder
+			logger := funcr.New(func(_, message string) { logs.WriteString(message) }, funcr.Options{Verbosity: 1})
+			prof := &profile.Profile{Name: queryEngineName, Signals: map[string]string{queryRunningSignal: expression}}
+			c, err := New(context.Background(), fakeScraper{exposition: queryExposition}, prof, testScrapeTimeout, WithLogger(logger))
+			require.NoError(t, err)
+			require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader("")))
+			require.Contains(t, logs.String(), "Mapping returned no metrics")
+			require.Contains(t, logs.String(), queryRunningSignal)
+			require.Contains(t, logs.String(), "native")
+		})
+	}
+}
+
+func TestCollectTokenSpeedRunning(t *testing.T) {
+	prof, err := profile.New("../../catalog/profiles/tokenspeed.yaml")
+	require.NoError(t, err)
+	c, err := New(context.Background(), fakeScraper{exposition: `# TYPE tokenspeed:num_requests_running gauge
+tokenspeed:num_requests_running{model_name="test",app_key=""} 3
+# TYPE tokenspeed:num_requests_waiting gauge
+tokenspeed:num_requests_waiting{model_name="test",app_key=""} 2
+`}, prof, testScrapeTimeout)
+	require.NoError(t, err)
+	want := `# HELP gen_ai_server_request_running [ALPHA] Number of requests executing forward passes.
+# TYPE gen_ai_server_request_running gauge
+gen_ai_server_request_running{model_name="test"} 1
+`
+	require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader(want), "gen_ai_server_request_running"))
 }
 
 func TestCollectHistogramSelector(t *testing.T) {

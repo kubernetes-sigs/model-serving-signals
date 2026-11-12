@@ -66,6 +66,7 @@ func newMapping(signal *contract.Signal, source string) (mapping, error) {
 // selectMetrics filters whole metric families, preserving classic histogram samples and types.
 func (m mapping) selectMetrics(families map[string]*dto.MetricFamily) ([]prometheus.Metric, error) {
 	var metrics []prometheus.Metric
+	seen := make(map[string]struct{})
 	for _, family := range families {
 		if m.selector.Name != "" && family.GetName() != m.selector.Name {
 			continue
@@ -75,6 +76,10 @@ func (m mapping) selectMetrics(families map[string]*dto.MetricFamily) ([]prometh
 			ls := labelsOf(sample)
 			ls[string(model.MetricNameLabel)] = family.GetName()
 			if matches(m.selector.LabelMatchers, func(name string) string { return ls[name] }) {
+				delete(ls, string(model.MetricNameLabel))
+				if err := m.checkLabels(seen, ls); err != nil {
+					return nil, err
+				}
 				selected.Metric = append(selected.Metric, sample)
 			}
 		}
@@ -101,12 +106,16 @@ func (m mapping) evaluate(ctx context.Context, engine *promql.Engine, snapshot s
 		return nil, err
 	}
 	metrics := make([]prometheus.Metric, 0, len(vector))
+	seen := make(map[string]struct{}, len(vector))
 	for _, sample := range vector {
 		if sample.H != nil {
 			return nil, fmt.Errorf("signal '%s': gauge expression returned a histogram", m.signal.Name)
 		}
 		ls := sample.Metric.Map()
 		delete(ls, string(model.MetricNameLabel))
+		if err := m.checkLabels(seen, ls); err != nil {
+			return nil, err
+		}
 		desc := prometheus.NewDesc(m.signal.PrometheusName, m.signal.Description, nil, ls)
 		metric, err := prometheus.NewConstMetric(desc, prometheus.GaugeValue, sample.F)
 		if err != nil {
@@ -115,6 +124,16 @@ func (m mapping) evaluate(ctx context.Context, engine *promql.Engine, snapshot s
 		metrics = append(metrics, metric)
 	}
 	return metrics, nil
+}
+
+// checkLabels rejects series that collide when renamed to the contract metric.
+func (m mapping) checkLabels(seen map[string]struct{}, ls map[string]string) error {
+	key := labels.FromMap(ls).String()
+	if _, exists := seen[key]; exists {
+		return fmt.Errorf("signal '%s': duplicate label set %s after removing the native metric name", m.signal.Name, key)
+	}
+	seen[key] = struct{}{}
+	return nil
 }
 
 func matches(matchers []*labels.Matcher, value func(string) string) bool {
