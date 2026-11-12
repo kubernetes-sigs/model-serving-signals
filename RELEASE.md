@@ -112,10 +112,11 @@ Complete the release issue checklist and ensure that:
   ```shell
   E2E_GPU_NAMESPACE=<temporary-namespace> \
     E2E_GPU_EXPORTER_IMAGE=<exporter-image> \
+    INFERENCE_ENGINE=<engine> \
     make test-e2e-gpu
   ```
 
-  This manual check deploys the real-vLLM example from [`examples/vllm/`](examples/vllm/) with the exporter sidecar and compares the engine's native metrics with the exported contract metrics. It is not a Prow job or a required PR check, and its result does not need to be recorded in the release issue.
+  This manual check deploys the selected real inference-engine example with the exporter sidecar and compares the engine's native metrics with the exported contract metrics. It defaults to `INFERENCE_ENGINE=vLLM`; set `INFERENCE_ENGINE=tokenspeed` to validate the TokenSpeed example. It is not a Prow job or a required PR check, and its result does not need to be recorded in the release issue.
 - The release image name and tag are correct, and the image will contain the intended catalog profiles.
 - Any release-specific documentation uses the released image rather than the `:main` staging image where appropriate.
 

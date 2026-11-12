@@ -45,9 +45,8 @@ Useful environment variables:
 ## Optional real-GPU validation
 
 The repository also includes an optional manual validation workflow for users
-who have access to a GPU Kubernetes cluster. It uses the real-vLLM deployment
-in [`examples/vllm/deployment.yaml`](../../examples/vllm/deployment.yaml), so it
-also verifies that the example continues to work.
+who have access to a GPU Kubernetes cluster. It uses the selected real-engine
+deployment, so it also verifies that the example continues to work.
 
 The workflow is not a Prow job or a required PR check. It creates a temporary
 namespace in the current Kubernetes context, deploys the example, replaces the
@@ -55,23 +54,44 @@ exporter image, runs the same metric comparison as the kind test, and deletes
 the namespace when it finishes.
 
 ```sh
-E2E_GPU_EXPORTER_IMAGE=registry.example.com/model-serving-signals:pr-123 \
+make test-e2e-gpu
+```
+
+By default, the test uses the vLLM example, the staging `:main` image, and
+creates a temporary namespace named `mss-gpu-e2e-<Unix timestamp>`. To use a
+different image or namespace, set `E2E_GPU_EXPORTER_IMAGE` or
+`E2E_GPU_NAMESPACE`. The selected namespace must be temporary and must not
+already exist because the test creates it and deletes it when finished. The
+exporter image must already be pushed to a registry that the cluster can
+access.
+
+The currently supported inference engines are:
+
+- `vllm` (default)
+- `tokenspeed`
+
+Set `INFERENCE_ENGINE` to select one. Other engine profiles in the repository
+are not currently supported by this GPU workflow.
+
+The supported engines configure their own deployment, model, metrics port, and
+profile. Run TokenSpeed with:
+
+```sh
+INFERENCE_ENGINE=tokenspeed \
   make test-e2e-gpu
 ```
 
-By default, the test uses the staging `:main` image and creates a temporary
-namespace named `mss-gpu-e2e-<Unix timestamp>`. To use a different image or
-namespace, set `E2E_GPU_EXPORTER_IMAGE` or `E2E_GPU_NAMESPACE`. The selected
-namespace must be temporary and must not already exist because the test creates
-it and deletes it when finished. The exporter image must already be pushed to
-a registry that the cluster can access. The test uses the example's current
-vLLM image and `Qwen/Qwen2.5-0.5B-Instruct` model.
+The Go comparison skips the in-flight `request.running` check when the selected
+profile does not define that signal. TokenSpeed currently has no verified
+mapping for `request.running`, so its other profile-defined signals are still
+compared.
 
 ## Adding an engine
 
-The Go test (`e2e_test.go`) is engine-agnostic and does not need to change.
-Adding an engine is a data change, and only makes sense once a CPU-only
-simulator that emits the engine's native metrics exists:
+The Go comparison is engine-agnostic, but the GPU harness needs an
+engine-specific configuration for the deployment, model, ports, and profile.
+Adding CPU simulator coverage also requires a simulator that emits the engine's
+native metrics:
 
 1. Add the engine profile under `catalog/profiles/<engine>.yaml`.
 2. Add a pod manifest under `test/e2e/manifests/<engine>.yaml` with the

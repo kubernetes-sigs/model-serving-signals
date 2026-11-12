@@ -14,17 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package e2e verifies the metrics exporter end to end against a simulated
-// inference engine. The cluster lifecycle (kind, deploy, port-forward) is owned
-// by hack/test-e2e.sh; this test assumes the simulator's native metrics endpoint,
-// the exporter's contract endpoint, and the simulator's inference API are already
-// reachable (typically via port-forward to localhost) and provided through the
-// environment.
+// Package e2e verifies the metrics exporter end to end against simulated or real
+// inference engines. The harness owns cluster setup, deployment, and
+// port-forwarding; this test assumes the engine's native metrics endpoint, the
+// exporter's contract endpoint, and the engine's inference API are reachable on
+// localhost.
 //
 // The test drives its own inference load so it controls timing: it first lets a
-// batch of requests complete (populating histograms), then holds one request
-// in-flight so num_requests_running is non-zero while both endpoints are scraped.
-// This gives the gauge assertions real teeth rather than comparing 0 to 0.
+// batch of requests complete (populating histograms). When the selected profile
+// maps request.running, it also holds one request in-flight while both endpoints
+// are scraped so the gauge assertion observes a non-zero value.
 //
 // The test is engine-agnostic: the engine profile is the only source of truth
 // for which native metric maps to which contract signal, so adding an engine
@@ -42,6 +41,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -56,18 +56,18 @@ import (
 )
 
 // These match the local kind + port-forward setup in hack/test-e2e.sh and the
-// values baked into test/e2e/manifests/vllm.yaml. The model can be overridden
-// for the real-vLLM validation, while the profile remains configurable so a
-// new engine can point the test at its own mapping oracle.
+// values baked into test/e2e/manifests/vllm.yaml. The model, ports, and profile
+// can be overridden for real-engine validation.
 const (
-	defaultModel  = "Qwen/Qwen2-0.5B"
-	engineHost    = "localhost"
-	enginePort    = 8000
-	exporterHost  = "localhost"
-	exporterPort  = 9464
-	metricsPath   = "/metrics"
-	warmupCount   = 5
-	scrapeTimeout = 5 * time.Second
+	defaultModel         = "Qwen/Qwen2-0.5B"
+	engineHost           = "localhost"
+	defaultEnginePort    = 8000
+	defaultInferencePort = 8000
+	exporterHost         = "localhost"
+	exporterPort         = 9464
+	metricsPath          = "/metrics"
+	warmupCount          = 5
+	scrapeTimeout        = 5 * time.Second
 )
 
 func inferenceModel() string {
@@ -75,6 +75,19 @@ func inferenceModel() string {
 		return v
 	}
 	return defaultModel
+}
+
+func testPort(t *testing.T, name string, fallback int) int {
+	t.Helper()
+	value := fallback
+	if configured := os.Getenv(name); configured != "" {
+		parsed, err := strconv.Atoi(configured)
+		if err != nil || parsed < 1 || parsed > 65535 {
+			t.Fatalf("invalid %s %q: must be a TCP port", name, configured)
+		}
+		value = parsed
+	}
+	return value
 }
 
 // defaultProfilePath resolves the vLLM profile relative to this test file, so
@@ -108,9 +121,11 @@ func TestExporterMatchesEngine(t *testing.T) {
 		t.Fatal("profile declares no signals")
 	}
 
+	enginePort := testPort(t, "E2E_ENGINE_PORT", defaultEnginePort)
+	inferencePort := testPort(t, "E2E_INFERENCE_PORT", defaultInferencePort)
 	engineScraper := translator.NewHTTPScraper(engineHost, enginePort, metricsPath)
 	exporterScraper := translator.NewHTTPScraper(exporterHost, exporterPort, metricsPath)
-	completionsURL := (&url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", engineHost, enginePort), Path: "/v1/completions"}).String()
+	completionsURL := (&url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", engineHost, inferencePort), Path: "/v1/completions"}).String()
 
 	// Phase 1: let a batch of requests complete so histograms are populated.
 	for i := 0; i < warmupCount; i++ {
@@ -119,26 +134,23 @@ func TestExporterMatchesEngine(t *testing.T) {
 		}
 	}
 
-	// Phase 2: hold one request in-flight so num_requests_running > 0, then scrape
-	// both endpoints as close together as possible. A wide gap, or scraping while
-	// idle, would make the gauge comparison meaningless.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	inflightCtx, cancelInflight := context.WithCancel(context.Background())
-	defer func() { cancelInflight(); wg.Wait() }()
-	go func() {
-		defer wg.Done()
-		// A large max_tokens combined with the simulator's inter-token latency keeps
-		// this request running long enough to be observed.
-		_ = infer(inflightCtx, completionsURL, inferenceModel(), 256)
-	}()
-
+	// Phase 2: when the profile maps request.running, hold one request in-flight
+	// so that the gauge is non-zero while both endpoints are scraped.
 	const runningSignal = "gen_ai.server.request.running"
 	runningNative, ok := prof.Signals[runningSignal]
-	if !ok {
-		t.Fatalf("profile does not map %q; cannot gate on in-flight requests", runningSignal)
+	if ok {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		inflightCtx, cancelInflight := context.WithCancel(context.Background())
+		defer func() { cancelInflight(); wg.Wait() }()
+		go func() {
+			defer wg.Done()
+			// A large max_tokens value keeps this request running long enough to
+			// be observed.
+			_ = infer(inflightCtx, completionsURL, inferenceModel(), 256)
+		}()
+		waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
 	}
-	waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), scrapeTimeout)
 	defer cancel()
@@ -193,7 +205,7 @@ func waitForRunning(t *testing.T, scraper translator.Scraper, nativeName string,
 	t.Fatalf("timed out waiting for %q > 0; no request stayed in-flight", nativeName)
 }
 
-// infer sends a single completion request to the simulator.
+// infer sends a single completion request to the engine.
 func infer(ctx context.Context, completionsURL, model string, maxTokens int) error {
 	body, _ := json.Marshal(map[string]any{
 		"model":      model,

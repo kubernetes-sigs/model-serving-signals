@@ -100,7 +100,7 @@ test-e2e: kind ## Run vLLM simulator end-to-end test in kind.
 	PATH="$(LOCALBIN):$$PATH" ./hack/test-e2e.sh
 
 .PHONY: test-e2e-gpu
-test-e2e-gpu: ## Run optional real-vLLM validation in an existing GPU cluster.
+test-e2e-gpu: ## Run optional real-engine validation in an existing GPU cluster.
 	./hack/test-e2e-gpu.sh
 
 .PHONY: image-build

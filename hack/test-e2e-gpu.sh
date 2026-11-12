@@ -27,9 +27,31 @@ cd "${REPO_ROOT}"
 
 NAMESPACE="${E2E_GPU_NAMESPACE:-mss-gpu-e2e-$(date +%s)}"
 EXPORTER_IMAGE="${E2E_GPU_EXPORTER_IMAGE:-us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main}"
-MANIFEST="${REPO_ROOT}/examples/vllm"
-DEPLOYMENT="qwen2-5-0-5b"
-ENGINE_PORT=8000
+
+INFERENCE_ENGINE="${INFERENCE_ENGINE:-vllm}"
+
+case "${INFERENCE_ENGINE}" in
+  vllm)
+    MANIFEST="${REPO_ROOT}/examples/vllm"
+    DEPLOYMENT="qwen2-5-0-5b"
+    MODEL="Qwen/Qwen2.5-0.5B-Instruct"
+    ENGINE_METRICS_PORT=8000
+    PROFILE="${REPO_ROOT}/catalog/profiles/vllm.yaml"
+    ;;
+  tokenspeed)
+    MANIFEST="${REPO_ROOT}/examples/tokenspeed"
+    DEPLOYMENT="tokenspeed"
+    MODEL="mss-qwen3"
+    ENGINE_METRICS_PORT=8001
+    PROFILE="${REPO_ROOT}/catalog/profiles/tokenspeed.yaml"
+    ;;
+  *)
+    echo "unsupported inference engine: ${INFERENCE_ENGINE}" >&2
+    exit 1
+    ;;
+esac
+
+INFERENCE_PORT=8000
 EXPORTER_PORT=9464
 READY_TIMEOUT="${E2E_GPU_READY_TIMEOUT:-15m}"
 
@@ -39,7 +61,7 @@ log() { echo "[e2e-gpu] $*"; }
 
 wait_for_metrics() {
   for _ in $(seq 1 30); do
-    if curl -sf "http://localhost:${ENGINE_PORT}/metrics" >/dev/null 2>&1 &&
+    if curl -sf "http://localhost:${ENGINE_METRICS_PORT}/metrics" >/dev/null 2>&1 &&
        curl -sf "http://localhost:${EXPORTER_PORT}/metrics" >/dev/null 2>&1; then
       return 0
     fi
@@ -66,7 +88,7 @@ done
 log "creating namespace ${NAMESPACE}"
 kubectl create namespace "${NAMESPACE}" >/dev/null
 
-log "deploying the vLLM example with exporter image ${EXPORTER_IMAGE}"
+log "deploying the ${INFERENCE_ENGINE} example with exporter image ${EXPORTER_IMAGE}"
 sed "s|image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main|image: ${EXPORTER_IMAGE}|" \
   "${MANIFEST}/deployment.yaml" | kubectl -n "${NAMESPACE}" apply -f -
 kubectl -n "${NAMESPACE}" apply -f "${MANIFEST}/service.yaml"
@@ -81,22 +103,33 @@ POD_NAME=$(kubectl -n "${NAMESPACE}" get pods \
   -l "app=${DEPLOYMENT}" \
   -o jsonpath='{.items[0].metadata.name}')
 
-log "port-forwarding vLLM and exporter metrics"
+log "port-forwarding ${INFERENCE_ENGINE} inference and metrics"
 kubectl -n "${NAMESPACE}" port-forward "pod/${POD_NAME}" \
-  "${ENGINE_PORT}:8000" >/dev/null 2>&1 &
+  "${INFERENCE_PORT}:8000" >/dev/null 2>&1 &
 pf_pids+=("$!")
+
+if [[ "${ENGINE_METRICS_PORT}" != "${INFERENCE_PORT}" ]]; then
+  kubectl -n "${NAMESPACE}" port-forward "pod/${POD_NAME}" \
+    "${ENGINE_METRICS_PORT}:${ENGINE_METRICS_PORT}" >/dev/null 2>&1 &
+  pf_pids+=("$!")
+fi
+
 kubectl -n "${NAMESPACE}" port-forward "pod/${POD_NAME}" \
   "${EXPORTER_PORT}:9464" >/dev/null 2>&1 &
 pf_pids+=("$!")
 
+log "check metrics for availablity"
 if ! wait_for_metrics; then
-  log "timed out waiting for vLLM and exporter metrics"
+  log "timed out waiting for ${INFERENCE_ENGINE} and exporter metrics"
   kubectl -n "${NAMESPACE}" logs "pod/${POD_NAME}" --all-containers --tail=100 || true
   exit 1
 fi
 
-log "running metric comparison against the real vLLM server"
-E2E_MODEL="Qwen/Qwen2.5-0.5B-Instruct" \
+log "running metric comparison against the real ${INFERENCE_ENGINE} server"
+E2E_MODEL="${MODEL}" \
+  E2E_ENGINE_PORT="${ENGINE_METRICS_PORT}" \
+  E2E_INFERENCE_PORT="${INFERENCE_PORT}" \
+  E2E_PROFILE_PATH="${PROFILE}" \
   go test -count=1 -v ./test/e2e/...
 
 log "real-GPU validation passed"
