@@ -76,12 +76,6 @@ spec:
           volumeMounts:
             - name: shm
               mountPath: /dev/shm
-          startupProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          periodSeconds: 5
-          failureThreshold: 180
           readinessProbe:
             httpGet:
               path: /health

@@ -70,6 +70,8 @@ log "deploying the vLLM example with exporter image ${EXPORTER_IMAGE}"
 sed "s|image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main|image: ${EXPORTER_IMAGE}|" \
   "${MANIFEST}/deployment.yaml" | kubectl -n "${NAMESPACE}" apply -f -
 kubectl -n "${NAMESPACE}" apply -f "${MANIFEST}/service.yaml"
+
+log "waiting for deployment to become ready" 
 kubectl -n "${NAMESPACE}" wait \
   --for=condition=Ready \
   pod -l "app=${DEPLOYMENT}" \
