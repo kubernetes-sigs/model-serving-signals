@@ -17,13 +17,16 @@ limitations under the License.
 package translator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -69,13 +72,52 @@ func (s *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily,
 		return nil, fmt.Errorf("scraping %s: unexpected status %s", s.url, resp.Status)
 	}
 
-	// Parse decodes a Prometheus text exposition into metric families keyed by name.
-	// Engine metric names such as "vllm:e2e_request_latency_seconds" contain colons, which are
-	// legal under the legacy validation scheme, so UTF-8 validation is used to accept any engine's names.
-	return parse(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading scrape response from %s: %w", s.url, err)
+	}
+	families, err := parse(bytes.NewReader(body))
+	if err != nil {
+		// The text parser only reports a line number. Name the endpoint, what it said it was
+		// returning, and the offending content so the failure can be diagnosed from the log alone.
+		return nil, fmt.Errorf("%w (endpoint %s, Content-Type %q%s)",
+			err, s.url, resp.Header.Get("Content-Type"), offendingLine(err, body))
+	}
+	return families, nil
 }
 
-// Parse decodes a Prometheus text exposition into metric families keyed by name.
+// maxOffendingLineLen caps how much of a bad line is echoed into an error, so a binary or
+// otherwise oversized body does not flood the log.
+const maxOffendingLineLen = 200
+
+// parseErrorLine matches the line number in the Prometheus text parser's errors, which read
+// "text format parsing error in line N: ...".
+var parseErrorLine = regexp.MustCompile(`parsing error in line (\d+)`)
+
+// offendingLine returns ", line N: <content>" for the line the text parser failed on, or "" when
+// the error carries no line number or the line is out of range. Trailing "\r" is kept: CRLF line
+// endings are themselves a parse failure, and quoting makes them visible.
+func offendingLine(err error, body []byte) string {
+	m := parseErrorLine.FindStringSubmatch(err.Error())
+	if m == nil {
+		return ""
+	}
+	n, convErr := strconv.Atoi(m[1])
+	if convErr != nil || n < 1 {
+		return ""
+	}
+	lines := strings.Split(string(body), "\n")
+	if n > len(lines) {
+		return ""
+	}
+	line := lines[n-1]
+	if len(line) > maxOffendingLineLen {
+		line = line[:maxOffendingLineLen] + "..."
+	}
+	return fmt.Sprintf(", line %d: %q", n, line)
+}
+
+// parse decodes a Prometheus text exposition into metric families keyed by name.
 // Engine metric names such as "vllm:e2e_request_latency_seconds" contain colons, which are
 // legal under the legacy validation scheme, so UTF-8 validation is used to accept any engine's names.
 func parse(r io.Reader) (map[string]*dto.MetricFamily, error) {

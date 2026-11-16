@@ -18,8 +18,10 @@ package translator
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -93,5 +95,75 @@ func TestNewHTTPScraperURL(t *testing.T) {
 		if got := NewHTTPScraper(tc.host, tc.port, tc.path).(*HTTPScraper).url; got != tc.want {
 			t.Errorf("NewHTTPScraper(%q, %d, %q).url = %q, want %q", tc.host, tc.port, tc.path, got, tc.want)
 		}
+	}
+}
+
+func TestHTTPScrapeParseErrorNamesEndpointAndLine(t *testing.T) {
+	// A metric name cannot start with a digit, so line 3 fails with "invalid metric name", the
+	// symptom reported in #46. The error must say where it was scraped from and what the line was.
+	const bad = "# HELP vllm:num_requests_running running\n" +
+		"# TYPE vllm:num_requests_running gauge\n" +
+		"123bad{model_name=\"m\"} 5\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte(bad))
+	}))
+	defer srv.Close()
+
+	url := srv.URL + "/metrics"
+	_, err := (&HTTPScraper{url: url}).Scrape(context.Background())
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	for _, want := range []string{
+		"invalid metric name",
+		"endpoint " + url,
+		`Content-Type "text/plain; version=0.0.4"`,
+		`line 3: "123bad{model_name=\"m\"} 5"`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q is missing %q", err, want)
+		}
+	}
+}
+
+func TestHTTPScrapeNonPrometheusBody(t *testing.T) {
+	// Pointing the exporter at an endpoint that is not a metrics endpoint (e.g. a frontend
+	// returning JSON) must be obvious from the Content-Type and the quoted body.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	_, err := (&HTTPScraper{url: srv.URL}).Scrape(context.Background())
+	if err == nil {
+		t.Fatal("expected a parse error for a JSON body")
+	}
+	for _, want := range []string{`Content-Type "application/json"`, `{\"status\":\"ok\"}`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q is missing %q", err, want)
+		}
+	}
+}
+
+func TestOffendingLine(t *testing.T) {
+	long := strings.Repeat("x", maxOffendingLineLen+10)
+	for name, tc := range map[string]struct {
+		err  string
+		body string
+		want string
+	}{
+		"points at the failing line":      {"parsing error in line 2: boom", "a 1\nb oops\nc 3\n", `, line 2: "b oops"`},
+		"keeps a carriage return visible": {"parsing error in line 1: x", "# TYPE a gauge\r\na 1\r\n", `, line 1: "# TYPE a gauge\r"`},
+		"truncates long lines":            {"parsing error in line 1: x", long, `, line 1: "` + strings.Repeat("x", maxOffendingLineLen) + `..."`},
+		"no line number":                  {"something else", "a 1\n", ""},
+		"line out of range":               {"parsing error in line 9: x", "a 1\n", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := offendingLine(errors.New(tc.err), []byte(tc.body)); got != tc.want {
+				t.Errorf("offendingLine = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
