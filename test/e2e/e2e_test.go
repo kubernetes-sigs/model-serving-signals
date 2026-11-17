@@ -121,7 +121,7 @@ func TestExporterMatchesEngine(t *testing.T) {
 		t.Fatal("profile declares no signals")
 	}
 
-	enginePort := testPort(t, "E2E_ENGINE_PORT", defaultEnginePort)
+	enginePort := testPort(t, "E2E_ENGINE_METRICS_PORT", defaultEnginePort)
 	inferencePort := testPort(t, "E2E_INFERENCE_PORT", defaultInferencePort)
 	engineScraper := translator.NewHTTPScraper(engineHost, enginePort, metricsPath)
 	exporterScraper := translator.NewHTTPScraper(exporterHost, exporterPort, metricsPath)

@@ -57,13 +57,7 @@ the namespace when it finishes.
 make test-e2e-gpu
 ```
 
-By default, the test uses the vLLM example, the staging `:main` image, and
-creates a temporary namespace named `mss-gpu-e2e-<Unix timestamp>`. To use a
-different image or namespace, set `E2E_GPU_EXPORTER_IMAGE` or
-`E2E_GPU_NAMESPACE`. The selected namespace must be temporary and must not
-already exist because the test creates it and deletes it when finished. The
-exporter image must already be pushed to a registry that the cluster can
-access.
+The exporter image must already be pushed to a registry that the cluster can access.
 
 The currently supported inference engines are:
 
@@ -71,10 +65,7 @@ The currently supported inference engines are:
 - `tokenspeed`
 
 Set `INFERENCE_ENGINE` to select one. Other engine profiles in the repository
-are not currently supported by this GPU workflow.
-
-The supported engines configure their own deployment, model, metrics port, and
-profile. Run TokenSpeed with:
+are not currently supported by this GPU workflow. Run TokenSpeed with:
 
 ```sh
 INFERENCE_ENGINE=tokenspeed \
@@ -85,6 +76,15 @@ The Go comparison skips the in-flight `request.running` check when the selected
 profile does not define that signal. TokenSpeed currently has no verified
 mapping for `request.running`, so its other profile-defined signals are still
 compared.
+
+Useful environment variables specific to optional real-GPU validation:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INFERENCE_ENGINE` | `vllm` | selects available engine profiles |
+| `E2E_GPU_NAMESPACE` | `mss-gpu-e2e-<Unix timestamp>` | names namespace for the test |
+| `E2E_GPU_EXPORTER_IMAGE` | `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main` | selects metrics exporter docker image |
+| `E2E_GPU_READY_TIMEOUT` | `15m` | sets deployment readiness kubectl wait timeout |
 
 ## Adding an engine
 

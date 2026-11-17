@@ -46,7 +46,7 @@ case "${INFERENCE_ENGINE}" in
     PROFILE="${REPO_ROOT}/catalog/profiles/tokenspeed.yaml"
     ;;
   *)
-    echo "unsupported inference engine: ${INFERENCE_ENGINE}" >&2
+    echo "unsupported inference engine: ${INFERENCE_ENGINE}  (supported: vllm, tokenspeed)" >&2
     exit 1
     ;;
 esac
@@ -93,7 +93,7 @@ sed "s|image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signal
   "${MANIFEST}/deployment.yaml" | kubectl -n "${NAMESPACE}" apply -f -
 kubectl -n "${NAMESPACE}" apply -f "${MANIFEST}/service.yaml"
 
-log "waiting for deployment to become ready" 
+log "waiting for deployment to become ready"
 kubectl -n "${NAMESPACE}" wait \
   --for=condition=Ready \
   pod -l "app=${DEPLOYMENT}" \
@@ -118,16 +118,16 @@ kubectl -n "${NAMESPACE}" port-forward "pod/${POD_NAME}" \
   "${EXPORTER_PORT}:9464" >/dev/null 2>&1 &
 pf_pids+=("$!")
 
-log "check metrics for availablity"
+log "waiting for ${INFERENCE_ENGINE} metrics on :${ENGINE_METRICS_PORT} and exporter metrics on :${EXPORTER_PORT}"
 if ! wait_for_metrics; then
-  log "timed out waiting for ${INFERENCE_ENGINE} and exporter metrics"
+  log "timed out waiting for ${INFERENCE_ENGINE} metrics on :${ENGINE_METRICS_PORT} and exporter metrics on :${EXPORTER_PORT}"
   kubectl -n "${NAMESPACE}" logs "pod/${POD_NAME}" --all-containers --tail=100 || true
   exit 1
 fi
 
 log "running metric comparison against the real ${INFERENCE_ENGINE} server"
 E2E_MODEL="${MODEL}" \
-  E2E_ENGINE_PORT="${ENGINE_METRICS_PORT}" \
+  E2E_ENGINE_METRICS_PORT="${ENGINE_METRICS_PORT}" \
   E2E_INFERENCE_PORT="${INFERENCE_PORT}" \
   E2E_PROFILE_PATH="${PROFILE}" \
   go test -count=1 -v ./test/e2e/...
