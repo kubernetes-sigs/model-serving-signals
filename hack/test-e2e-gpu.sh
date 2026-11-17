@@ -46,7 +46,7 @@ case "${INFERENCE_ENGINE}" in
     PROFILE="${REPO_ROOT}/catalog/profiles/tokenspeed.yaml"
     ;;
   *)
-    echo "unsupported inference engine: ${INFERENCE_ENGINE}  (supported: vllm, tokenspeed)" >&2
+    echo "unsupported inference engine: ${INFERENCE_ENGINE} (supported: vllm, tokenspeed)" >&2
     exit 1
     ;;
 esac

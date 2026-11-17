@@ -76,10 +76,10 @@ Useful environment variables specific to optional real-GPU validation:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `INFERENCE_ENGINE` | `vllm` | selects available engine profiles |
-| `E2E_GPU_NAMESPACE` | `mss-gpu-e2e-<Unix timestamp>` | names namespace for the test |
-| `E2E_GPU_EXPORTER_IMAGE` | `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main` | selects metrics exporter docker image |
-| `E2E_GPU_READY_TIMEOUT` | `15m` | sets deployment readiness kubectl wait timeout |
+| `INFERENCE_ENGINE` | `vllm` | engine to validate; selects the example, deployment label, model, metrics port, and profile |
+| `E2E_GPU_NAMESPACE` | `mss-gpu-e2e-<Unix timestamp>` | namespace created for the run; must not already exist, deleted on exit |
+| `E2E_GPU_EXPORTER_IMAGE` | `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main` | exporter image substituted into the example's deployment; must already be accessible by the cluster |
+| `E2E_GPU_READY_TIMEOUT` | `15m` | how long kubectl wait --for=condition=Ready waits for the example pod |
 
 ## Adding an engine
 
@@ -92,3 +92,4 @@ native metrics:
 2. Add a pod manifest under `test/e2e/manifests/<engine>.yaml` with the
    simulator and the exporter sidecar (see `vllm.yaml`).
 3. Point the test at the profile via `E2E_PROFILE_PATH`.
+4. Add a case for the engine to `hack/test-e2e-gpu.sh`.
