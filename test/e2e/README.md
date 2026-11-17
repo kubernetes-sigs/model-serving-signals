@@ -40,14 +40,56 @@ Useful environment variables:
 | --- | --- | --- |
 | `E2E_KEEP_CLUSTER` | unset | keep the cluster after the run |
 | `E2E_PROFILE_PATH` | `catalog/profiles/vllm.yaml` | profile used as the mapping oracle |
+| `E2E_MODEL` | `Qwen/Qwen2-0.5B` | model name sent to the inference API |
+
+## Optional real-GPU validation
+
+The repository also includes an optional manual validation workflow for users
+who have access to a GPU Kubernetes cluster. It uses the selected real-engine
+deployment, so it also verifies that the example continues to work.
+
+The workflow is not a Prow job or a required PR check. It creates a temporary
+namespace in the current Kubernetes context, deploys the example, replaces the
+exporter image, runs the same metric comparison as the kind test, and deletes
+the namespace when it finishes.
+
+```sh
+make test-e2e-gpu
+```
+
+The exporter image must already be pushed to a registry that the cluster can access.
+
+The currently supported inference engines are:
+
+- `vllm` (default)
+- `tokenspeed`
+
+Set `INFERENCE_ENGINE` to select one. Other engine profiles in the repository
+are not currently supported by this GPU workflow. Run TokenSpeed with:
+
+```sh
+INFERENCE_ENGINE=tokenspeed \
+  make test-e2e-gpu
+```
+
+Useful environment variables specific to optional real-GPU validation:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INFERENCE_ENGINE` | `vllm` | engine to validate; selects the example, deployment label, model, metrics port, and profile |
+| `E2E_GPU_NAMESPACE` | `mss-gpu-e2e-<Unix timestamp>` | namespace created for the run; must not already exist, deleted on exit |
+| `E2E_GPU_EXPORTER_IMAGE` | `us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main` | exporter image substituted into the example's deployment; must already be accessible by the cluster |
+| `E2E_GPU_READY_TIMEOUT` | `15m` | how long kubectl wait --for=condition=Ready waits for the example pod |
 
 ## Adding an engine
 
-The Go test (`e2e_test.go`) is engine-agnostic and does not need to change.
-Adding an engine is a data change, and only makes sense once a CPU-only
-simulator that emits the engine's native metrics exists:
+The Go comparison is engine-agnostic, but the GPU harness needs an
+engine-specific configuration for the deployment, model, ports, and profile.
+Adding CPU simulator coverage also requires a simulator that emits the engine's
+native metrics:
 
 1. Add the engine profile under `catalog/profiles/<engine>.yaml`.
 2. Add a pod manifest under `test/e2e/manifests/<engine>.yaml` with the
    simulator and the exporter sidecar (see `vllm.yaml`).
 3. Point the test at the profile via `E2E_PROFILE_PATH`.
+4. Add a case for the engine to `hack/test-e2e-gpu.sh`.
