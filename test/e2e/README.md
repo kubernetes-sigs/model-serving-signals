@@ -72,11 +72,6 @@ INFERENCE_ENGINE=tokenspeed \
   make test-e2e-gpu
 ```
 
-The Go comparison skips the in-flight `request.running` check when the selected
-profile does not define that signal. TokenSpeed currently has no verified
-mapping for `request.running`, so its other profile-defined signals are still
-compared.
-
 Useful environment variables specific to optional real-GPU validation:
 
 | Variable | Default | Purpose |

@@ -21,9 +21,9 @@ limitations under the License.
 // localhost.
 //
 // The test drives its own inference load so it controls timing: it first lets a
-// batch of requests complete (populating histograms). When the selected profile
-// maps request.running, it also holds one request in-flight while both endpoints
-// are scraped so the gauge assertion observes a non-zero value.
+// batch of requests complete (populating histograms), then holds one request
+// in-flight so num_requests_running is non-zero while both endpoints are scraped.
+// This gives the gauge assertions real teeth rather than comparing 0 to 0.
 //
 // The test is engine-agnostic: the engine profile is the only source of truth
 // for which native metric maps to which contract signal, so adding an engine
@@ -134,23 +134,26 @@ func TestExporterMatchesEngine(t *testing.T) {
 		}
 	}
 
-	// Phase 2: when the profile maps request.running, hold one request in-flight
-	// so that the gauge is non-zero while both endpoints are scraped.
+	// Phase 2: hold one request in-flight so num_requests_running > 0, then scrape
+	// both endpoints as close together as possible. A wide gap, or scraping while
+	// idle, would make the gauge comparison meaningless.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	inflightCtx, cancelInflight := context.WithCancel(context.Background())
+	defer func() { cancelInflight(); wg.Wait() }()
+	go func() {
+		defer wg.Done()
+		// A large max_tokens combined with the simulator's inter-token latency keeps
+		// this request running long enough to be observed.
+		_ = infer(inflightCtx, completionsURL, inferenceModel(), 256)
+	}()
+
 	const runningSignal = "gen_ai.server.request.running"
 	runningNative, ok := prof.Signals[runningSignal]
-	if ok {
-		var wg sync.WaitGroup
-		wg.Add(1)
-		inflightCtx, cancelInflight := context.WithCancel(context.Background())
-		defer func() { cancelInflight(); wg.Wait() }()
-		go func() {
-			defer wg.Done()
-			// A large max_tokens value keeps this request running long enough to
-			// be observed.
-			_ = infer(inflightCtx, completionsURL, inferenceModel(), 256)
-		}()
-		waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
+	if !ok {
+		t.Fatalf("profile does not map %q; cannot gate on in-flight requests", runningSignal)
 	}
+	waitForRunning(t, engineScraper, runningNative, scrapeTimeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), scrapeTimeout)
 	defer cancel()
