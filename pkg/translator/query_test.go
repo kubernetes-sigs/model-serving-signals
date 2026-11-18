@@ -192,6 +192,56 @@ gen_ai_server_request_running{model_name="test"} 1
 	require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader(want), "gen_ai_server_request_running"))
 }
 
+// With priority scheduling, SGLang emits each request gauge once under priority="" (the total) and once
+// per priority value. Only the total must reach the contract signals, or summing them counts every request twice.
+func TestCollectSGLangPriorityRequestGauges(t *testing.T) {
+	prof, err := profile.New("../../catalog/profiles/sglang.yaml")
+	require.NoError(t, err)
+	tests := []struct{ name, exposition, want string }{
+		{
+			name: "priority scheduling enabled",
+			exposition: `# TYPE sglang:num_queue_reqs gauge
+sglang:num_queue_reqs{model_name="test",tp_rank="0",priority=""} 5
+sglang:num_queue_reqs{model_name="test",tp_rank="0",priority="0"} 3
+sglang:num_queue_reqs{model_name="test",tp_rank="0",priority="1"} 2
+# TYPE sglang:num_running_reqs gauge
+sglang:num_running_reqs{model_name="test",tp_rank="0",priority=""} 4
+sglang:num_running_reqs{model_name="test",tp_rank="0",priority="1"} 4
+`,
+			want: `# HELP gen_ai_server_request_queued [ALPHA] Number of requests admitted by the server but not yet scheduled into a batch.
+# TYPE gen_ai_server_request_queued gauge
+gen_ai_server_request_queued{model_name="test",priority="",tp_rank="0"} 5
+# HELP gen_ai_server_request_running [ALPHA] Number of requests executing forward passes.
+# TYPE gen_ai_server_request_running gauge
+gen_ai_server_request_running{model_name="test",priority="",tp_rank="0"} 4
+`,
+		},
+		{
+			name: "priority scheduling disabled",
+			exposition: `# TYPE sglang:num_queue_reqs gauge
+sglang:num_queue_reqs{model_name="test",tp_rank="0"} 5
+# TYPE sglang:num_running_reqs gauge
+sglang:num_running_reqs{model_name="test",tp_rank="0"} 4
+`,
+			want: `# HELP gen_ai_server_request_queued [ALPHA] Number of requests admitted by the server but not yet scheduled into a batch.
+# TYPE gen_ai_server_request_queued gauge
+gen_ai_server_request_queued{model_name="test",tp_rank="0"} 5
+# HELP gen_ai_server_request_running [ALPHA] Number of requests executing forward passes.
+# TYPE gen_ai_server_request_running gauge
+gen_ai_server_request_running{model_name="test",tp_rank="0"} 4
+`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c, err := New(context.Background(), fakeScraper{exposition: test.exposition}, prof, testScrapeTimeout)
+			require.NoError(t, err)
+			require.NoError(t, testutil.CollectAndCompare(c, strings.NewReader(test.want),
+				"gen_ai_server_request_queued", "gen_ai_server_request_running"))
+		})
+	}
+}
+
 func TestCollectHistogramSelector(t *testing.T) {
 	exposition := vllmExpositionTiny + `vllm:e2e_request_latency_seconds_bucket{model_name="other",le="0.5"} 0
 vllm:e2e_request_latency_seconds_bucket{model_name="other",le="+Inf"} 1
