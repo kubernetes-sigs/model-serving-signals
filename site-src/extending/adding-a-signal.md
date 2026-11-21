@@ -34,17 +34,24 @@ naming conventions, and say what it means:
 mustRegister(newSignal("gen_ai.server.request.queued", requestCounterUnit, otlptranslator.MetricTypeGauge, "Number of requests admitted by the server but not yet scheduled into a batch.", metrics.ALPHA))
 ```
 
-Every new signal starts at `metrics.ALPHA` (from `k8s.io/component-base/metrics`). Promoting it to
-`metrics.BETA` or `metrics.STABLE` is a separate change, made once the signal is mapped and tested
-across engines.
+The unit argument follows OpenTelemetry conventions: annotation units such as `requestCounterUnit`
+(`"{request}"`) do not add a Prometheus suffix, while time units such as `"s"` add `_seconds`.
+
+Every new signal starts at `metrics.ALPHA` (from `k8s.io/component-base/metrics`). Don't put the
+stability level in the description yourself: `newSignal` already prefixes it with `[ALPHA]` (following
+the Kubernetes HELP-text convention), so writing it by hand produces `[ALPHA] [ALPHA] ...`. Promoting
+the signal to `metrics.BETA` or `metrics.STABLE` is a separate change, made once the signal is mapped
+and tested across engines.
 
 `mustRegister` adds the signal to the `Signals` map keyed by its name. That map is the contract:
 profile validation, the translator and the tests all go through it, so a signal not listed there does not
 exist.
 
-Run `go test ./pkg/contract/` and extend `TestPrometheusName` with the expected Prometheus name. The name is
-derived by `github.com/prometheus/otlptranslator` (dots become underscores, the unit becomes a suffix, counters
-get `_total`), so the test documents what consumers will see.
+Run `go test ./pkg/contract/` and extend `TestPrometheusName` with the expected Prometheus name. If the
+golden snapshot changed, regenerate it with `make update-contract-golden` and commit the updated
+`pkg/contract/testdata/signals.yaml`; review the diff, since that file is the reviewed snapshot of the
+contract. The name is derived by `github.com/prometheus/otlptranslator` (dots become underscores, the
+unit becomes a suffix, counters get `_total`), so the test documents what consumers will see.
 
 ## 2. Map the signal in the engine profiles
 
