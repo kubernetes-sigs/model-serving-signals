@@ -19,7 +19,7 @@ pkg/contract (declare) --> catalog/profiles (map per engine) --> pkg/translator 
    metric under the contract name.
 4. The **contract documentation** tells consumers what the signal means and which engines provide it.
 
-Adding a signal touches, at most, four places:
+The table lists the main files involved in each step.
 
 | Step | Where | When |
 |------|-------|------|
@@ -106,13 +106,15 @@ picks a converter per signal from the signal's instrument type. Today it re-emit
 
 ## 4. Verify end-to-end
 
-The end-to-end test in
-[`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e) iterates every
-signal in the engine profile and asserts the exporter's value matches the engine's native metric. Once the
-signal is mapped in the profile the test uses, `make test-e2e` covers it automatically, with no new test
-code. Run it and confirm your signal shows up as a passing subtest. See the
+The end-to-end test compares the exporter's metrics with the native metrics for every signal mapped
+in the profile under test. Gauges and histograms already have value comparisons. If you add an
+instrument type, extend `compareFamily` in
+[`test/e2e/e2e_test.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/test/e2e/e2e_test.go)
+to compare the native and exported values for that type.
+
+Run `make test-e2e` and confirm the signal appears as a passing subtest. See the
 [e2e README](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/test/e2e/README.md) for
-prerequisites and knobs.
+prerequisites and profile selection.
 
 ## 5. Update the contract documentation
 
