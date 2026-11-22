@@ -12,6 +12,7 @@ consumers see the same metric names and semantics regardless of the engine behin
 | vLLM         | [`profiles/vllm.yaml`](profiles/vllm.yaml)       |
 | SGLang       | [`profiles/sglang.yaml`](profiles/sglang.yaml)   |
 | TensorRT-LLM | [`profiles/trt-llm.yaml`](profiles/trt-llm.yaml) |
+| TokenSpeed | [`profiles/tokenspeed.yaml`](profiles/tokenspeed.yaml) |
 
 ## Profile format
 

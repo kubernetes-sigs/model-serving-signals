@@ -1,0 +1,85 @@
+# TokenSpeed model server with a metrics exporter sidecar.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tokenspeed
+  labels:
+    app: tokenspeed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tokenspeed
+  template:
+    metadata:
+      labels:
+        app: tokenspeed
+    spec:
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: model-cache
+          emptyDir: {}
+      containers:
+        - name: tokenspeed
+          # Official nightly-621b53 image, pinned to its linux/amd64 manifest.
+          image: lightseekorg/tokenspeed@sha256:f9299c4efe88f79c1da9e6d73227fdbbb38d1fa25e1ffab49b3e59eeeb9ee46a
+          command: ["tokenspeed", "serve"]
+          args:
+            - Qwen/Qwen3-0.6B
+            - --served-model-name=mss-qwen3
+            - --enable-metrics
+            - --disable-kvstore
+            - --sampling-backend=triton
+            - --metrics-host=127.0.0.1
+            - --metrics-port=8001
+          env:
+            - name: HF_HOME
+              value: /model-cache
+          ports:
+            - name: inference
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: inference
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+            - name: model-cache
+              mountPath: /model-cache
+        # CPU-only metrics sidecar; the inference container above requests the GPU.
+        - name: metrics-exporter
+          image: us-central1-docker.pkg.dev/k8s-staging-images/model-serving-signals/metrics-exporter:main
+          args:
+            - --profile=/catalog/profiles/tokenspeed.yaml
+            - --engine-host=127.0.0.1
+            - --engine-metrics-port=8001
+            - --exporter-metrics-port=9464
+          ports:
+            - name: contract
+              containerPort: 9464
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: contract
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

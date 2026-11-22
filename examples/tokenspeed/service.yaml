@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokenspeed
+  labels:
+    app: tokenspeed
+spec:
+  selector:
+    app: tokenspeed
+  ports:
+    - name: inference
+      port: 8000
+      targetPort: inference
+    - name: contract
+      port: 9464
+      targetPort: contract

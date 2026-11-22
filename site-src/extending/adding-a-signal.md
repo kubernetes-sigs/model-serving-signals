@@ -30,7 +30,7 @@ The table lists the main files involved in each step.
 
 ## 1. Declare the signal in the contract
 
-All contract signals are registered in the `init` function of
+The `init` function registers each signal by name with `mustRegister` in
 [`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go).
 That registration is the contract: profile validation, the translator and the tests all look signals up
 there, so a signal that is not registered does not exist.
@@ -39,21 +39,22 @@ Decide which of the two groups your signal belongs to:
 
 - **OpenTelemetry already defines the metric.** Check the
   [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/). If the
-  metric is there, build the signal from the generated `genaiconv` instrument type, as the existing
+  metric is there, pass its generated `genaiconv` instrument to `newSignalFromGenAiInstrument`, as the existing
   OpenTelemetry-derived signals do. The name, unit and description then come from the spec and cannot drift
   from it. You only choose the instrument type and the stability level.
-- **OpenTelemetry does not define it yet.** Declare it in the project-defined group, following the same
+- **OpenTelemetry does not define it yet.** Use `newSignal` in the project-defined group, following the same
   naming conventions (`gen_ai.server.*`), and give it a name, a [UCUM](https://ucum.org/) unit (for example
   `s`, `By`, `{request}`; leave it empty when dimensionless), an instrument type, a one-sentence description
   of what it measures, and a stability level.
 
-Every new signal starts at the **Alpha** stability level. Promoting it to Beta or Stable is a separate change,
+Set the stability level to `metrics.ALPHA` from `k8s.io/component-base/metrics`. Supply the description
+as plain text because the constructor adds the `[ALPHA]` prefix. Promotion to Beta or Stable is a separate change,
 made once the signal is mapped and tested across engines. See the stability levels described in the
 [Model server contract](../reference/contract.md).
 
 The Prometheus name is derived automatically from the OpenTelemetry name, unit and type
-(dots become underscores, the unit becomes a suffix, counters get `_total`), so you do not pick it; the
-registration fails if the name cannot be translated.
+by `otlptranslator`. Dots become underscores and counters get `_total`. Seconds add `_seconds`,
+while annotation units such as `{request}` add no unit suffix. Registration fails if the name cannot be translated.
 
 ### Lock the change into the contract tests
 
@@ -61,9 +62,8 @@ The contract is guarded by two tests in `pkg/contract`:
 
 - A **golden file test** compares every registered signal against
   [`pkg/contract/testdata/signals.yaml`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/testdata/signals.yaml).
-  Adding a signal fails it until you regenerate the golden file with `make update-contract-golden`. Review the
-  resulting diff: it is the reviewable snapshot of what you added, including the stability prefix in the
-  description.
+  Adding a signal fails it until you regenerate the golden file with `make update-contract-golden`. Review and
+  commit the updated snapshot, including the stability prefix in the description.
 - A **Prometheus name test** documents what consumers will see for a sample of signals. Extend it with your
   signal's expected Prometheus name, especially when the unit or type produces a suffix that is not obvious.
 
