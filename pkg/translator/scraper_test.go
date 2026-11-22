@@ -17,12 +17,15 @@ limitations under the License.
 package translator
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	dto "github.com/prometheus/client_model/go"
 )
@@ -148,22 +151,36 @@ func TestHTTPScrapeNonPrometheusBody(t *testing.T) {
 }
 
 func TestOffendingLine(t *testing.T) {
-	long := strings.Repeat("x", maxOffendingLineLen+10)
+	longName := strings.Repeat("x", 10000)
 	for name, tc := range map[string]struct {
-		err  string
 		body string
 		want string
 	}{
-		"points at the failing line":      {"parsing error in line 2: boom", "a 1\nb oops\nc 3\n", `, line 2: "b oops"`},
-		"keeps a carriage return visible": {"parsing error in line 1: x", "# TYPE a gauge\r\na 1\r\n", `, line 1: "# TYPE a gauge\r"`},
-		"truncates long lines":            {"parsing error in line 1: x", long, `, line 1: "` + strings.Repeat("x", maxOffendingLineLen) + `..."`},
-		"no line number":                  {"something else", "a 1\n", ""},
-		"line out of range":               {"parsing error in line 9: x", "a 1\n", ""},
+		"later line":                {"a 1\nb oops\nc 3\n", `, line 2: "b oops"`},
+		"carriage return":           {"# TYPE a gauge\r\na 1\r\n", `, line 1: "# TYPE a gauge\r"`},
+		"unterminated line":         {"123bad", `, line 1: "123bad"`},
+		"long line":                 {longName + " oops\n", `, line 1: "` + longName[:maxOffendingLineLen] + `..."`},
+		"after a long valid sample": {longName + " 1\n123bad\n", `, line 2: "123bad"`},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := offendingLine(errors.New(tc.err), []byte(tc.body)); got != tc.want {
-				t.Errorf("offendingLine = %q, want %q", got, tc.want)
+			lines := &scrapeLines{body: bufio.NewReader(strings.NewReader(tc.body))}
+			_, err := parse(lines)
+			if got := lines.offendingLine(err); got != tc.want {
+				t.Errorf("offendingLine(%v) = %q, want %q", err, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestScrapeLinesReadError(t *testing.T) {
+	readErr := errors.New("scrape interrupted")
+	body := io.MultiReader(strings.NewReader("a 1\n"), iotest.ErrReader(readErr))
+	lines := &scrapeLines{body: bufio.NewReader(body)}
+	_, err := parse(lines)
+	if !errors.Is(err, readErr) {
+		t.Fatalf("parse error = %v, want %v", err, readErr)
+	}
+	if got := lines.offendingLine(err); got != "" {
+		t.Errorf("offendingLine = %q for a transport error", got)
 	}
 }
