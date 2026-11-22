@@ -17,16 +17,16 @@ limitations under the License.
 package translator
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
-	"strings"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -72,49 +72,62 @@ func (s *HTTPScraper) Scrape(ctx context.Context) (map[string]*dto.MetricFamily,
 		return nil, fmt.Errorf("scraping %s: unexpected status %s", s.url, resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	lines := &scrapeLines{body: bufio.NewReader(resp.Body)}
+	families, err := parse(lines)
 	if err != nil {
-		return nil, fmt.Errorf("reading scrape response from %s: %w", s.url, err)
-	}
-	families, err := parse(bytes.NewReader(body))
-	if err != nil {
-		// The text parser only reports a line number. Name the endpoint, what it said it was
-		// returning, and the offending content so the failure can be diagnosed from the log alone.
 		return nil, fmt.Errorf("%w (endpoint %s, Content-Type %q%s)",
-			err, s.url, resp.Header.Get("Content-Type"), offendingLine(err, body))
+			err, s.url, resp.Header.Get("Content-Type"), lines.offendingLine(err))
 	}
 	return families, nil
 }
 
-// maxOffendingLineLen caps how much of a bad line is echoed into an error, so a binary or
-// otherwise oversized body does not flood the log.
 const maxOffendingLineLen = 200
 
-// parseErrorLine matches the line number in the Prometheus text parser's errors, which read
-// "text format parsing error in line N: ...".
-var parseErrorLine = regexp.MustCompile(`parsing error in line (\d+)`)
+// scrapeLines feeds the parser at most one line per read so that its buffering cannot
+// advance past the line it reports. Long lines are delivered in chunks, in full.
+type scrapeLines struct {
+	body    *bufio.Reader
+	pending []byte // Unconsumed part of the last ReadSlice result.
+	readErr error  // Returned after pending bytes have been delivered.
+	line    int
+	prefix  []byte // First maxOffendingLineLen+1 bytes of the current line.
+}
 
-// offendingLine returns ", line N: <content>" for the line the text parser failed on, or "" when
-// the error carries no line number or the line is out of range. Trailing "\r" is kept: CRLF line
-// endings are themselves a parse failure, and quoting makes them visible.
-func offendingLine(err error, body []byte) string {
-	m := parseErrorLine.FindStringSubmatch(err.Error())
-	if m == nil {
+func (r *scrapeLines) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if len(r.pending) == 0 {
+		// ErrBufferFull means the next chunk continues the same line.
+		continuation := r.readErr == bufio.ErrBufferFull
+		if r.readErr != nil && !continuation {
+			return 0, r.readErr
+		}
+		r.pending, r.readErr = r.body.ReadSlice('\n')
+		if len(r.pending) == 0 {
+			return 0, r.readErr
+		}
+		if !continuation {
+			r.line++
+			line := bytes.TrimSuffix(r.pending, []byte{'\n'})
+			r.prefix = append(r.prefix[:0], line[:min(len(line), maxOffendingLineLen+1)]...)
+		}
+	}
+	n := copy(p, r.pending)
+	r.pending = r.pending[n:]
+	return n, nil
+}
+
+func (r *scrapeLines) offendingLine(err error) string {
+	var parseErr expfmt.ParseError
+	if !errors.As(err, &parseErr) || parseErr.Line != r.line {
 		return ""
 	}
-	n, convErr := strconv.Atoi(m[1])
-	if convErr != nil || n < 1 {
-		return ""
-	}
-	lines := strings.Split(string(body), "\n")
-	if n > len(lines) {
-		return ""
-	}
-	line := lines[n-1]
+	line := string(r.prefix)
 	if len(line) > maxOffendingLineLen {
 		line = line[:maxOffendingLineLen] + "..."
 	}
-	return fmt.Sprintf(", line %d: %q", n, line)
+	return fmt.Sprintf(", line %d: %q", r.line, line)
 }
 
 // parse decodes a Prometheus text exposition into metric families keyed by name.
