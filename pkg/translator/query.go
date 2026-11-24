@@ -42,6 +42,9 @@ func newMapping(signal *contract.Signal, source string) (mapping, error) {
 	if err != nil {
 		return mapping{}, fmt.Errorf("signal '%s': %w", signal.Name, err)
 	}
+	if feature := unsupportedTimeFeature(expr); feature != "" {
+		return mapping{}, fmt.Errorf("signal '%s': %s is unsupported because mappings only see the current scrape", signal.Name, feature)
+	}
 	if expr.Type() != parser.ValueTypeVector {
 		return mapping{}, fmt.Errorf("signal '%s': mapping must return an instant vector, got %s", signal.Name, expr.Type())
 	}
@@ -53,14 +56,36 @@ func newMapping(signal *contract.Signal, source string) (mapping, error) {
 		expr = paren.Expr
 	}
 	m := mapping{signal: signal, native: source, convert: convert}
-	if selector, ok := expr.(*parser.VectorSelector); ok &&
-		selector.OriginalOffset == 0 && selector.OriginalOffsetExpr == nil && selector.Timestamp == nil && selector.StartOrEnd == 0 {
+	if selector, ok := expr.(*parser.VectorSelector); ok {
 		m.selector = selector
 	}
 	if signal.Type == otlptranslator.MetricTypeHistogram && m.selector == nil {
 		return mapping{}, fmt.Errorf("signal '%s': histogram mappings require a current-scrape vector selector", signal.Name)
 	}
 	return m, nil
+}
+
+// unsupportedTimeFeature returns the first construct that requests data outside the current scrape.
+func unsupportedTimeFeature(node parser.Node) string {
+	switch n := node.(type) {
+	case *parser.MatrixSelector:
+		return "range selector"
+	case *parser.SubqueryExpr:
+		return "subquery"
+	case *parser.VectorSelector:
+		if n.OriginalOffset != 0 || n.OriginalOffsetExpr != nil {
+			return "offset modifier"
+		}
+		if n.Timestamp != nil || n.StartOrEnd != 0 {
+			return "@ modifier"
+		}
+	}
+	for child := range parser.ChildrenIter(node) {
+		if feature := unsupportedTimeFeature(child); feature != "" {
+			return feature
+		}
+	}
+	return ""
 }
 
 // selectMetrics filters whole metric families, preserving classic histogram samples and types.

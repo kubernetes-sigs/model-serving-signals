@@ -6,4 +6,6 @@ signals:
   gen_ai.server.time_to_first_token: tokenspeed:time_to_first_token_seconds # histogram, seconds
   gen_ai.server.time_per_output_token: tokenspeed:decode_time_per_output_token_seconds # histogram, seconds
   gen_ai.server.request.queued: tokenspeed:num_requests_waiting # gauge
+  # nightly-621b53 includes waiting requests in num_requests_running. For builds
+  # containing lightseekorg/tokenspeed#3225, use num_requests_running directly.
   gen_ai.server.request.running: tokenspeed:num_requests_running - tokenspeed:num_requests_waiting # gauge

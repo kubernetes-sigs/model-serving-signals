@@ -106,8 +106,6 @@ func New(ctx context.Context, scraper Scraper, engineProfile *profile.Profile, t
 		if m.selector == nil && c.engine == nil {
 			c.engine = promql.NewEngine(promql.EngineOpts{
 				MaxSamples: 1_000_000, Timeout: timeout,
-				EnableAtModifier: true, EnableNegativeOffset: true,
-				NoStepSubqueryIntervalFn: func(int64) int64 { return time.Minute.Milliseconds() },
 			})
 		}
 	}

@@ -27,7 +27,8 @@ signals:
 - `name` identifies the engine.
 - `signals` maps contract signal names to PromQL instant-vector selectors, e.g. `engine:requests{state="running"}`.
   Gauge mappings also accept expressions such as `sum by (model_name) (engine:requests)` or `engine:total - engine:waiting`.
-  Queries use the current scrape only; no historical samples are retained. Histogram selectors preserve the native buckets, count, and sum.
+  Queries use only the current scrape. The exporter rejects range selectors, subqueries, time offsets and `@` modifiers at startup.
+  Histogram selectors preserve the native buckets, count, and sum.
 - Every key must be a signal defined in the contract; unknown fields are rejected.
 - Simple selectors require the native instrument type to match the contract signal; mismatches are reported and skipped.
   Gauge expressions emit float results as gauges without checking the input instrument types.

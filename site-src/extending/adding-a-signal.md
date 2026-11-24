@@ -55,20 +55,24 @@ unit becomes a suffix, counters get `_total`), so the test documents what consum
 
 ## 2. Map the signal in the engine profiles
 
-Each engine profile in [`catalog/profiles/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/) maps contract signal names to the engine's
-native metric. The native metric is re-emitted as is under the contract name, so its instrument type must match
-the signal's:
+Each engine profile in [`catalog/profiles/`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/catalog/profiles/) maps contract signals to PromQL over the current scrape.
+For a direct selector, including a bare metric name, the native instrument type must match the signal.
+Histogram selectors preserve buckets, count and sum. A gauge mapping can also compute its value from
+several samples, as in the running-request example below.
 
 ```yaml
 name: vllm
 signals:
   gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram, seconds
+  gen_ai.server.request.running: sum by (model_name) (vllm:num_requests_running)
 ```
 
 Add a line for every engine that exposes an equivalent metric. If an engine does not provide the signal,
 leave it out: an absent key means "this engine does not have it" and the exporter skips it.
 
-The exporter logs an error at scrape time when the native metric's actual type does not match the signal's.
+The exporter logs direct-selector type mismatches at scrape time. Gauge expressions must return an instant
+vector of float samples. The exporter rejects range selectors, subqueries, time offsets and `@` modifiers
+when it loads the mappings.
 
 ## 3. Add a converter if the signal type is new
 
@@ -91,8 +95,8 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 
 The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
 iterates every signal in the engine profile and asserts the exporter's value matches the engine's native
-metric. Once the signal is mapped in the inference engine profile, `make test-e2e` covers it automatically, no new test
-code needed. Run it and confirm your signal shows up as a passing subtest.
+metric by name. Run `make test-e2e` for bare metric names in the simulator profiles. For selectors with
+label filters or computed gauges, verify the expected samples against a real or saved engine scrape.
 
 ## 5. Update the contract documentation
 

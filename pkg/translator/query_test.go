@@ -99,8 +99,6 @@ gen_ai_server_request_running{model="a",rank="1",state="running"} 2.5
 		},
 		{name: "absent metric", expression: `engine:missing - engine:capacity`},
 		{name: "unmatched labels", expression: `engine:requests - engine:capacity`},
-		{name: "no historical samples", expression: `rate(engine:requests[5m])`},
-		{name: "offset cannot reuse current samples", expression: `engine:requests offset 1m`},
 		{name: "query type mismatch", expression: `engine:counter`},
 		{
 			name:       "expression emits counter input as gauge",
@@ -218,7 +216,13 @@ func TestNewRejectsInvalidPromQL(t *testing.T) {
 	tests := []struct{ signal, expression, errorText string }{
 		{queryRunningSignal, "sum(", "parse error"},
 		{queryRunningSignal, "1 + 2", "must return an instant vector"},
-		{queryRunningSignal, "engine:requests[5m]", "must return an instant vector"},
+		{queryRunningSignal, "engine:requests[5m]", "range selector is unsupported"},
+		{queryRunningSignal, "sum(rate(engine:requests[5m]))", "range selector is unsupported"},
+		{queryRunningSignal, "engine:capacity - engine:requests offset 5m", "offset modifier is unsupported"},
+		{queryRunningSignal, "engine:requests offset -5m", "offset modifier is unsupported"},
+		{queryRunningSignal, "engine:requests @ 0", "@ modifier is unsupported"},
+		{queryRunningSignal, "sum(engine:requests @ end())", "@ modifier is unsupported"},
+		{queryRunningSignal, "max_over_time(sum(engine:requests)[5m:])", "subquery is unsupported"},
 		{queryDurationSignal, "sum(engine:latency)", "histogram mappings require"},
 	}
 	for _, test := range tests {
