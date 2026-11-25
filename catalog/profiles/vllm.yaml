@@ -5,6 +5,8 @@ name: vllm
 signals:
   gen_ai.server.request.duration: vllm:e2e_request_latency_seconds # histogram, seconds
   gen_ai.server.time_to_first_token: vllm:time_to_first_token_seconds # histogram, seconds
+  # vLLM records 0 for requests with at most one output token, which the contract excludes (#80).
+  # Remove this note once vllm-project/vllm#68548 is merged.
   gen_ai.server.time_per_output_token: vllm:request_time_per_output_token_seconds # histogram, seconds
   gen_ai.server.request.queued: vllm:num_requests_waiting # gauge
   gen_ai.server.request.running: vllm:num_requests_running # gauge
