@@ -219,9 +219,9 @@ func newCluster(t *testing.T) *cluster {
 		t.Fatalf("create Kubernetes client: %v", err)
 	}
 	return &cluster{
-		config: config,
-		client: client,
-		namespace: envOr("E2E_NAMESPACE", defaultNamespace),
+		config:    config,
+		client:    client,
+		namespace: envOr("E2E_GPU_NAMESPACE", defaultNamespace),
 	}
 }
 
@@ -309,9 +309,9 @@ func (c *cluster) dumpPod(ctx context.Context, t *testing.T, name string) {
 
 // endpointPorts groups the three container ports the e2e test reaches.
 type endpointPorts struct {
-	inference		int32
-	engineMetrics	int32
-	exporter		int32
+	inference     int32
+	engineMetrics int32
+	exporter      int32
 }
 
 // endpoints addresses one pod's container ports through the API server's
@@ -324,9 +324,9 @@ type endpoints struct {
 
 // mockerPorts are the ports used by the CPU suite's Dynamo mocker pod.
 var mockerPorts = endpointPorts{
-	inference: 8000,
-	engineMetrics: 8081, 
-	exporter: 9464,
+	inference:     8000,
+	engineMetrics: 8081,
+	exporter:      9464,
 }
 
 // endpoints returns the HTTP endpoints of the named pod. Idle port-forward
@@ -352,8 +352,8 @@ func (e endpoints) url(port int32, path string) string {
 }
 
 func (e endpoints) inferenceURL(path string) string { return e.url(e.ports.inference, path) }
-func (e endpoints) engineMetricsURL() string       { return e.url(e.ports.engineMetrics, metricsPath) }
-func (e endpoints) exporterMetricsURL() string     { return e.url(e.ports.exporter, metricsPath) }
+func (e endpoints) engineMetricsURL() string        { return e.url(e.ports.engineMetrics, metricsPath) }
+func (e endpoints) exporterMetricsURL() string      { return e.url(e.ports.exporter, metricsPath) }
 
 // podScraper scrapes a Prometheus text endpoint through the pod transport;
 // translator.HTTPScraper always uses http.DefaultClient, which cannot reach

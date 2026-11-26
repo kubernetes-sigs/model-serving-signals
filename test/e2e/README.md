@@ -52,8 +52,6 @@ E2E_KUBE_CONTEXT=kind-model-serving-signals-e2e go test -v ./test/e2e/...
 | `E2E_KUBE_CONTEXT` | set by the harness | kube context the Go test uses; the test skips when unset |
 | `E2E_DYNAMO_IMAGE` | `defaultDynamoImage` in `utils.go` | Dynamo frontend and mocker image |
 | `E2E_EXPORTER_IMAGE` | `defaultExporterImage` in `utils.go` | exporter image under test |
-| `E2E_PROFILE_PATH` | `catalog/profiles/vllm.yaml` | profile used as the mapping oracle |
-| `E2E_MODEL` | `Qwen/Qwen2-0.5B` | model name sent to the inference API |
 
 ## Optional real-GPU validation
 
@@ -65,7 +63,8 @@ make test-e2e-gpu
 
 `hack/test-e2e-gpu.sh` deploys the selected example from `examples/`, replaces its exporter image, waits for the rollout, and runs `TestRealEngine`, which reuses the same comparison as the CPU suite. The namespace it creates is deleted on exit.
 
-| Variable| Default | Purpose |
+| Variable | Default | Purpose |
+| --- | --- | --- |
 | `INFERENCE_ENGINE` | `vllm` | engine to validate: `vllm` or `tokenspeed` |
 | `E2E_GPU_NAMESPACE` | `mss-gpu-e2e-<Unix timestamp>` | namespace to create; must not exist, deleted on exit |
 | `E2E_GPU_KUBE_CONTEXT` | current context | kube context to deploy into |

@@ -100,7 +100,7 @@ fi
 
 log "running TestRealEngine against the real ${INFERENCE_ENGINE} server"
 export E2E_KUBE_CONTEXT="${KUBE_CONTEXT}"
-export E2E_NAMESPACE="${NAMESPACE}"
+export E2E_GPU_NAMESPACE="${NAMESPACE}"
 export E2E_REAL_ENGINE="${INFERENCE_ENGINE}"
 export E2E_REAL_POD="${POD_NAME}"
 export E2E_REAL_MODEL="${MODEL}"
@@ -109,7 +109,7 @@ export E2E_REAL_ENGINE_METRICS_PORT="${ENGINE_METRICS_PORT}"
 export E2E_REAL_EXPORTER_PORT=9464
 
 output="$(mktemp)"
-if ! go test -count=1 -v -run TestRealEngine ./test/e2e/... 2>&1 | tee "${output}"; then
+if ! go test -count=1 -v -run '^TestRealEngine$' ./test/e2e/... 2>&1 | tee "${output}"; then
   rm -f "${output}"
   exit 1
 fi

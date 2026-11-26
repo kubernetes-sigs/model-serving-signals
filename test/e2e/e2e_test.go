@@ -39,9 +39,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
-	"strconv"
 	"testing"
 	"time"
 
