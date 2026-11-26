@@ -41,6 +41,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"strconv"
 	"testing"
 	"time"
 
@@ -82,6 +83,49 @@ func TestExporterMatchesEngine(t *testing.T) {
 			checkExporter(t, prof, ep, mockerModel)
 		})
 	}
+}
+
+func TestRealEngine(t *testing.T) {
+	engine := os.Getenv("E2E_REAL_ENGINE")
+	if engine == "" {
+		t.Skip("E2E_REAL_ENGINE is unset; run `make test-e2e-gpu`")
+	}
+	pod := os.Getenv("E2E_REAL_POD")
+	if pod == "" {
+		t.Fatal("E2E_REAL_POD is unset; the harness must pass the deployed pod name")
+	}
+	model := os.Getenv("E2E_REAL_MODEL")
+	if model == "" {
+		t.Fatal("E2E_REAL_MODEL is unset; the harness must pass the served model name")
+	}
+
+	c := newCluster(t) // skips unless E2E_KUBE_CONTEXT is set
+	prof, err := profile.New(filepath.Join(profilesDir, engine+".yaml"))
+	if err != nil {
+		t.Fatalf("load profile for %q: %v", engine, err)
+	}
+	ep := c.endpointsWithPorts(t, pod, endpointPorts{
+		inference:     envPort(t, "E2E_REAL_INFERENCE_PORT", 8000),
+		engineMetrics: envPort(t, "E2E_REAL_ENGINE_METRICS_PORT", 8000),
+		exporter:      envPort(t, "E2E_REAL_EXPORTER_PORT", 9464),
+	})
+
+	waitServable(t, ep, model)
+	checkExporter(t, prof, ep, model)
+}
+
+// envPort reads a TCP port from the environment, falling back to the default.
+func envPort(t *testing.T, name string, fallback int32) int32 {
+	t.Helper()
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		t.Fatalf("invalid %s %q: must be a TCP port", name, value)
+	}
+	return int32(port)
 }
 
 // checkExporter proves the full scrape -> map -> emit path: for every signal

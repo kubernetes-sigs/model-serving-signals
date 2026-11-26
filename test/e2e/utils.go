@@ -43,8 +43,8 @@ import (
 )
 
 const (
-	namespace   = "default"
-	metricsPath = "/metrics"
+	defaultNamespace = "default"
+	metricsPath      = "/metrics"
 
 	// The first engine downloads the tokenizer, so readiness can take a while.
 	podReadyTimeout  = 10 * time.Minute
@@ -194,8 +194,9 @@ func envOr(name, fallback string) string {
 
 // cluster wraps the clients for the kind cluster created by hack/test-e2e.sh.
 type cluster struct {
-	config *rest.Config
-	client kubernetes.Interface
+	config    *rest.Config
+	client    kubernetes.Interface
+	namespace string
 }
 
 // newCluster connects to the context in E2E_KUBE_CONTEXT, and skips the test
@@ -217,7 +218,11 @@ func newCluster(t *testing.T) *cluster {
 	if err != nil {
 		t.Fatalf("create Kubernetes client: %v", err)
 	}
-	return &cluster{config: config, client: client}
+	return &cluster{
+		config: config,
+		client: client,
+		namespace: envOr("E2E_NAMESPACE", defaultNamespace),
+	}
 }
 
 // deploy creates the pod, waits until it is ready, and registers a cleanup
@@ -225,7 +230,7 @@ func newCluster(t *testing.T) *cluster {
 // reuse the pod name.
 func (c *cluster) deploy(t *testing.T, pod *corev1.Pod) {
 	t.Helper()
-	pods := c.client.CoreV1().Pods(namespace)
+	pods := c.client.CoreV1().Pods(c.namespace)
 	if _, err := pods.Create(t.Context(), pod, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("create pod %s: %v", pod.Name, err)
 	}
@@ -263,7 +268,7 @@ func isReady(pod *corev1.Pod) bool {
 }
 
 func (c *cluster) deletePod(ctx context.Context, t *testing.T, name string) {
-	pods := c.client.CoreV1().Pods(namespace)
+	pods := c.client.CoreV1().Pods(c.namespace)
 	gracePeriod := int64(0)
 	err := pods.Delete(ctx, name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -281,7 +286,7 @@ func (c *cluster) deletePod(ctx context.Context, t *testing.T, name string) {
 
 // dumpPod logs the pod's status and the tail of every container's logs.
 func (c *cluster) dumpPod(ctx context.Context, t *testing.T, name string) {
-	pods := c.client.CoreV1().Pods(namespace)
+	pods := c.client.CoreV1().Pods(c.namespace)
 	pod, err := pods.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		t.Logf("get pod %s for debugging: %v", name, err)
@@ -302,22 +307,43 @@ func (c *cluster) dumpPod(ctx context.Context, t *testing.T, name string) {
 	}
 }
 
+// endpointPorts groups the three container ports the e2e test reaches.
+type endpointPorts struct {
+	inference		int32
+	engineMetrics	int32
+	exporter		int32
+}
+
 // endpoints addresses one pod's container ports through the API server's
 // port-forward, so no local ports are opened.
 type endpoints struct {
 	client *http.Client
 	host   string // <namespace>.<pod>, resolved by newPodTransport
+	ports  endpointPorts
+}
+
+// mockerPorts are the ports used by the CPU suite's Dynamo mocker pod.
+var mockerPorts = endpointPorts{
+	inference: 8000,
+	engineMetrics: 8081, 
+	exporter: 9464,
 }
 
 // endpoints returns the HTTP endpoints of the named pod. Idle port-forward
 // connections are closed when the test ends, before the pod is reused.
 func (c *cluster) endpoints(t *testing.T, pod string) endpoints {
+	return c.endpointsWithPorts(t, pod, mockerPorts)
+}
+
+// endpointsWithPorts is like endpoints but lets the caller override the ports.
+func (c *cluster) endpointsWithPorts(t *testing.T, pod string, ports endpointPorts) endpoints {
 	t.Helper()
 	transport := newPodTransport(c.client, c.config)
 	t.Cleanup(transport.CloseIdleConnections)
 	return endpoints{
 		client: &http.Client{Transport: transport, Timeout: requestTimeout},
-		host:   namespace + "." + pod,
+		host:   c.namespace + "." + pod,
+		ports:  ports,
 	}
 }
 
@@ -325,9 +351,9 @@ func (e endpoints) url(port int32, path string) string {
 	return fmt.Sprintf("http://%s:%d%s", e.host, port, path)
 }
 
-func (e endpoints) inferenceURL(path string) string { return e.url(inferencePort, path) }
-func (e endpoints) engineMetricsURL() string        { return e.url(engineMetricsPort, metricsPath) }
-func (e endpoints) exporterMetricsURL() string      { return e.url(exporterPort, metricsPath) }
+func (e endpoints) inferenceURL(path string) string { return e.url(e.ports.inference, path) }
+func (e endpoints) engineMetricsURL() string       { return e.url(e.ports.engineMetrics, metricsPath) }
+func (e endpoints) exporterMetricsURL() string     { return e.url(e.ports.exporter, metricsPath) }
 
 // podScraper scrapes a Prometheus text endpoint through the pod transport;
 // translator.HTTPScraper always uses http.DefaultClient, which cannot reach
