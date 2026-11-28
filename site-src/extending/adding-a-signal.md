@@ -93,10 +93,13 @@ the exporter refuses to start with `unsupported ... signal`. To support it:
 
 ## 4. Verify end-to-end
 
-The end-to-end test in [`test/e2e`](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
-iterates every signal in the engine profile and asserts the exporter's value matches the engine's native
-metric by name. Run `make test-e2e` for bare metric names in the simulator profiles. For selectors with
-label filters or computed gauges, verify the expected samples against a real or saved engine scrape.
+Selectors and expressions can be tested end to end against simulated inference engines. The current
+[`test/e2e` harness](https://github.com/kubernetes-sigs/model-serving-signals/tree/main/test/e2e)
+looks up mapping strings as native metric names in `checkExporter` and `waitForRunning`. Extending those
+helpers to check label selectors and computed gauges is planned as a follow-up.
+
+Run `make test-e2e` for the catalog profiles currently covered by the simulators. When adding a selector
+or expression, also verify its expected samples against a real or saved engine scrape.
 
 ## 5. Update the contract documentation
 

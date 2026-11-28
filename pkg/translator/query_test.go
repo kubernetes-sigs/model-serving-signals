@@ -174,13 +174,14 @@ func TestCollectLogsEmptyMapping(t *testing.T) {
 	}
 }
 
-func TestCollectTokenSpeedRunning(t *testing.T) {
-	prof, err := profile.New("../../catalog/profiles/tokenspeed.yaml")
-	require.NoError(t, err)
-	c, err := New(context.Background(), fakeScraper{exposition: `# TYPE tokenspeed:num_requests_running gauge
-tokenspeed:num_requests_running{model_name="test",app_key=""} 3
-# TYPE tokenspeed:num_requests_waiting gauge
-tokenspeed:num_requests_waiting{model_name="test",app_key=""} 2
+func TestCollectRunningDifference(t *testing.T) {
+	prof := &profile.Profile{Name: queryEngineName, Signals: map[string]string{
+		queryRunningSignal: "engine:admitted - engine:waiting",
+	}}
+	c, err := New(context.Background(), fakeScraper{exposition: `# TYPE engine:admitted gauge
+engine:admitted{model_name="test",app_key=""} 3
+# TYPE engine:waiting gauge
+engine:waiting{model_name="test",app_key=""} 2
 `}, prof, testScrapeTimeout)
 	require.NoError(t, err)
 	want := `# HELP gen_ai_server_request_running [ALPHA] Number of requests executing forward passes.
