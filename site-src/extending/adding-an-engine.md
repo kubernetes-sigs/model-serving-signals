@@ -1,14 +1,13 @@
 # Adding a new engine
 
-An *engine profile* is a YAML file that maps an inference engine's native metric names (vLLM, SGLang,
+An *engine profile* is a YAML file that maps an inference engine's native metrics (vLLM, SGLang,
 TensorRT-LLM, ...) onto the contract signals. Supporting a new engine normally requires **no Go code**: add a
 profile, and the exporter can translate that engine's metrics.
 
 ## 1. Find the engine's native metrics
 
 Start the engine and scrape its Prometheus endpoint (usually `/metrics`). For each contract signal in
-[`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go), find the native metric with the same meaning **and
-the same instrument type**. For example, `gen_ai.server.request.duration` is a histogram of end-to-end request
+[`pkg/contract/signals.go`](https://github.com/kubernetes-sigs/model-serving-signals/blob/main/pkg/contract/signals.go), identify the native metrics that provide the signal's value. For example, `gen_ai.server.request.duration` is a histogram of end-to-end request
 latency in seconds, so it must be mapped to a native histogram in seconds.
 
 Do not map a metric just because the name looks similar. If the units differ, or the engine only exposes a
@@ -28,16 +27,17 @@ signals:
   gen_ai.server.request.queued: sglang:num_queue_reqs
 ```
 
-Each entry names the native metric that is re-emitted as is under the contract signal's name. The native
-instrument type must match the contract signal's: a histogram for a histogram signal, a gauge for a gauge
-signal. See [Adding a new signal](adding-a-signal.md#2-map-the-signal-in-the-engine-profiles).
+Use a native metric name or a selector such as `engine:requests{state="queued"}` to export matching
+samples of the same instrument type as the signal. For a gauge, you can also compute a float value
+from the current scrape, for example `sum by (model_name) (engine:requests{state="queued"})`.
+See [Adding a new signal](adding-a-signal.md#2-map-the-signal-in-the-engine-profiles).
 
-Rules, enforced by `profile.Parse`:
+The profile loader checks these fields:
 
 - `name` is required.
 - `signals` must contain at least one entry.
 - Every key must be a contract signal name; unknown keys are rejected.
-- Every value is a non-empty native metric name.
+- Every value is a non-empty mapping string. The translator validates its PromQL at startup.
 - Unknown top-level fields are rejected.
 
 A contract signal that the engine does not provide is simply omitted. The exporter logs it at debug level and
@@ -56,7 +56,7 @@ curl -s localhost:9464/metrics
 ```
 
 Each mapped signal should appear under its contract name, e.g. `gen_ai_server_request_duration_seconds`, with
-the engine's labels preserved. A type mismatch between the native metric and the contract signal shows up in
+the selector's labels or the labels produced by the expression. A type mismatch for a direct selector shows up in
 the exporter log as `Failed to convert native metric`.
 
 ## 4. Add end-to-end coverage
@@ -82,7 +82,7 @@ iterating on a mapping, or for engines not yet in the catalog.
 ## Checklist
 
 - [ ] `catalog/profiles/<engine>.yaml` added, `name` matches the file name
-- [ ] Each mapped native metric has the same meaning, unit and instrument type as the contract signal
+- [ ] Each mapping produces the meaning, unit and instrument type defined by the contract signal
 - [ ] `go run ./cmd/exporter --profile catalog/profiles/<engine>.yaml` starts without errors
 - [ ] Verified against a real scrape of the engine
 - [ ] End-to-end coverage added and `make test-e2e` passes (when a simulator is available)
